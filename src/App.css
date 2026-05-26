@@ -1,0 +1,196 @@
+.material-symbols-rounded,
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Message/code block styles */
+.message-code {
+  background: rgba(7, 8, 11, 0.92);
+  border: 1px solid rgba(255,255,255,0.06);
+  padding: 14px;
+  border-radius: 18px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace;
+  font-size: 0.92rem;
+  color: #e6e1da;
+  overflow: auto;
+  position: relative;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+}
+
+.code-copy-btn {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.06);
+  color: #fff;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.typing-dots {
+  display: inline-block;
+  height: 1em;
+}
+.typing-dots span {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 2px;
+  background: #c97a4b;
+  border-radius: 50%;
+  opacity: 0.3;
+  animation: typingDots 1s infinite;
+}
+.typing-dots span:nth-child(2) { animation-delay: 0.15s }
+.typing-dots span:nth-child(3) { animation-delay: 0.3s }
+@keyframes typingDots {
+  0% { transform: translateY(0); opacity: 0.3 }
+  50% { transform: translateY(-4px); opacity: 1 }
+  100% { transform: translateY(0); opacity: 0.3 }
+}
+
+/* message animations */
+.msg-enter {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.msg-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 320ms cubic-bezier(.2,.9,.25,1), transform 420ms cubic-bezier(.2,.9,.25,1);
+}
+
+.message-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.caret {
+  width: 1px;
+  background: #c97a4b;
+  display: inline-block;
+  margin-left: 6px;
+  animation: blinkCaret 1s steps(2,end) infinite;
+  height: 1em;
+  vertical-align: text-bottom;
+}
+@keyframes blinkCaret {
+  0% { opacity: 1 }
+  50% { opacity: 0 }
+  100% { opacity: 1 }
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.05);
+  color: #e8e3da;
+  font-size: 12px;
+  transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
+}
+.action-btn:hover { background: rgba(255,255,255,0.06); transform: translateY(-1px) }
+
+.copied-badge {
+  position: absolute;
+  right: 10px;
+  top: 8px;
+  background: rgba(201,122,75,0.96);
+  color: #100d0c;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* Refined message container */
+.message-container {
+  position: relative;
+  background: linear-gradient(180deg, rgba(14,15,18,0.88), rgba(10,11,14,0.82));
+  border: 1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 12px 34px rgba(0,0,0,0.35);
+  padding: 10px 12px;
+  border-radius: 16px;
+  line-height: 1.58;
+  transition: transform 220ms cubic-bezier(.2,.9,.25,1), box-shadow 220ms ease, background 220ms ease, border-color 220ms ease;
+}
+
+.message-container:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.42);
+  border-color: rgba(255,255,255,0.08);
+}
+
+.message-container:hover .message-actions,
+.message-actions.always-show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.message-code-block { background: #0f1113; border-radius: 14px; padding: 12px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace; font-size: 0.92rem; border: 1px solid rgba(255,255,255,0.04) }
+.message-code-block code { white-space: pre; display: block }
+.inline-code { background: rgba(255,255,255,0.02); padding: 2px 6px; border-radius: 6px; font-family: ui-monospace, monospace; font-size: .92em }
+
+.message-container .prose p { margin: 0 0 10px 0 }
+
+.message-container .prose p:last-child { margin-bottom: 0 }
+
+.copied-badge { opacity: 0; transform: translateY(-6px); transition: opacity 180ms ease, transform 200ms ease }
+.copied-badge.show { opacity: 1; transform: translateY(0) }
+
+.message-body { display: block }
+.message-body.streaming { transition: opacity 160ms ease }
+
+/* Message row + avatars */
+.message-row { display: flex; gap: 12px; align-items: flex-start; width: 100% }
+.message-row.user { justify-content: flex-end }
+.message-row.assistant { justify-content: flex-start }
+.avatar { width: 26px; height: 26px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: linear-gradient(180deg,#111,#0b0b0b); border: 1px solid rgba(255,255,255,0.05) }
+
+/* Assistant bubble distinct style */
+.message-container.assistant { color: #e6e1da }
+
+/* User bubble distinct style */
+.message-container.user { background: linear-gradient(180deg, rgba(201,122,75,0.16), rgba(201,122,75,0.1)); color: #f3efe7; border-color: rgba(201,122,75,0.15) }
+
+/* Ensure actions are visible on small screens */
+.message-actions.always-show { opacity: 1; transform: translateY(0) }
+
+@media (max-width: 768px) {
+  .message-row {
+    gap: 8px;
+  }
+
+  .message-container {
+    border-radius: 18px;
+    padding: 14px;
+  }
+
+  .message-actions {
+    gap: 6px;
+  }
+}
