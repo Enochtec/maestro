@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 .material-symbols-rounded,
 .material-symbols-outlined {
   font-family: 'Material Symbols Outlined';
@@ -13,6 +15,28 @@
   direction: ltr;
   -webkit-font-feature-settings: 'liga';
   -webkit-font-smoothing: antialiased;
+}
+
+:root {
+  font-size: 17px;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+body,
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+/* Toast notification */
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px) }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0) }
+}
+.toast-enter {
+  animation: toastIn 200ms cubic-bezier(.2,.9,.25,1) forwards;
 }
 
 /* Message/code block styles */

@@ -5,15 +5,13 @@ import maestroLogo from '../../maestro_logo.png'
 
 export function AuthBrandHeader() {
   return (
-    <div className="flex flex-col items-center mb-8">
+    <div className="flex items-center justify-center gap-3 mb-8">
       <img
         src={maestroLogo}
         alt="Maestro AI"
-        className="w-14 h-14 rounded-2xl object-cover shadow-xl mb-4"
-        style={{ background: 'rgba(255,255,255,0.05)' }}
+        className="w-12 h-12 rounded-xl object-contain relative top-[2px]"
       />
-      <h1 className="text-2xl font-bold text-[#f3efe7]">Maestro AI</h1>
-      <p className="text-[#8f877f] text-sm mt-1">Your intelligent assistant</p>
+      <h1 className="text-[1.4rem] font-bold text-[#f3efe7] leading-none">Maestro AI</h1>
     </div>
   )
 }

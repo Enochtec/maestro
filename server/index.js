@@ -45,7 +45,7 @@ function requireStrings(obj, ...keys) {
 }
 
 app.use(cors())
-app.use(express.json({ limit: '2mb' }))
+app.use(express.json({ limit: '20mb' }))
 
 async function ensureDatabase() {
   // Neon is PostgreSQL-compatible, so we connect directly via DATABASE_URL
@@ -288,6 +288,100 @@ app.post('/api/threads/:threadId/messages', async (req, res) => {
 })
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
+// ── AI chat endpoint (DeepSeek) ─────────────────────────────────────────────
+
+app.post('/api/chat', async (req, res) => {
+  const { messages } = req.body ?? {}
+
+  const deepSeekApiKey = process.env.DEEPSEEK_API_KEY ?? process.env.VITE_DEEPSEEK_API_KEY
+  const deepSeekModel = process.env.DEEPSEEK_MODEL ?? process.env.VITE_DEEPSEEK_MODEL ?? 'deepseek-chat'
+  if (!deepSeekApiKey) {
+    return res.status(500).json({
+      error: 'Missing DEEPSEEK_API_KEY (or VITE_DEEPSEEK_API_KEY) in .env.local',
+    })
+  }
+
+  if (!Array.isArray(messages) || !messages.length) {
+    return res.status(400).json({ error: 'messages array is required' })
+  }
+
+  const systemText = 'You are Maestro, a concise, polished AI assistant. Be helpful, direct, and practical.'
+
+  try {
+    const deepSeekRes = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${deepSeekApiKey}`,
+      },
+      body: JSON.stringify({
+        model: deepSeekModel,
+        stream: true,
+        messages: [
+          { role: 'system', content: systemText },
+          ...messages.map((m) => ({ role: m.role, content: m.content })),
+        ],
+        temperature: 0.7,
+      }),
+    })
+
+    if (!deepSeekRes.ok) {
+      const errText = await deepSeekRes.text()
+      return res.status(deepSeekRes.status).json({ error: errText || 'DeepSeek request failed' })
+    }
+
+    if (!deepSeekRes.body) {
+      const body = await deepSeekRes.text()
+      const data = JSON.parse(body)
+      const text = data?.choices?.[0]?.message?.content?.trim()
+      if (!text) return res.status(500).json({ error: 'DeepSeek returned an empty response' })
+      return res.json({ text })
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+
+    const reader = deepSeekRes.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const parts = buffer.split('\n')
+      buffer = parts.pop() ?? ''
+
+      for (const rawLine of parts) {
+        const line = rawLine.trim()
+        if (!line.startsWith('data:')) continue
+        const dataLine = line.slice(5).trim()
+        if (!dataLine || dataLine === '[DONE]') continue
+
+        try {
+          const parsed = JSON.parse(dataLine)
+          const delta = parsed?.choices?.[0]?.delta?.content ?? parsed?.choices?.[0]?.message?.content ?? ''
+          if (!delta) continue
+          res.write(`data: ${JSON.stringify({ text: delta })}\n\n`)
+        } catch {
+          // skip malformed SSE chunks
+        }
+      }
+    }
+
+    res.write('data: [DONE]\n\n')
+    res.end()
+  } catch (err) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'AI request failed' })
+    } else {
+      res.end()
+    }
+  }
+})
 
 // ── Static files ──────────────────────────────────────────────────────────────
 

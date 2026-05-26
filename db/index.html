@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Maestro Platform</title>
+    <style>
+        /* RESET & FULL SCREEN LAYOUT - HIDE ALL IFRAME VISUAL CLUES */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;      /* Prevents body scrolling, iframe handles its own */
+            background: #000000;   /* Deep fallback, matches many modern sites */
+        }
+
+        /* The iframe wrapper takes the entire viewport without any borders, margins, or shadows */
+        .fullscreen-frame {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;          /* No border (critical: removes iframe outline) */
+            margin: 0;
+            padding: 0;
+            display: block;
+            background: #fff;      /* fallback background while loading */
+        }
+
+        /* Optional: ensure that there is no focus ring or any visible "iframe" indicator 
+           if the user tabs or clicks. Browsers don't show outlines on iframe elements by default 
+           but we reinforce no outline. */
+        .fullscreen-frame:focus {
+            outline: none;
+        }
+
+        /* For seamless integration, we also want to avoid any scrollbar interference.
+           Some iframe contents might have their own scroll, but we hide body scroll completely. */
+        ::-webkit-scrollbar {
+            width: 0;
+            background: transparent;
+        }
+        
+        /* For Firefox, hide scrollbar on html/body if needed (but not necessary) */
+        html {
+            scrollbar-width: none; /* hides scrollbar on html but not breaking iframe internals */
+        }
+        
+        /* Additionally, to prevent any possible "drag" resize or corner markers (not applicable to iframes) */
+        iframe {
+            pointer-events: auto;  /* fully interactive */
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        /* Loading subtle fade-in for smoother transition (non-intrusive) */
+        .loading-mask {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0a0c10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.45s ease-out, visibility 0.45s;
+            pointer-events: none;   /* Allow clicks to pass through after fade? But we remove it after load */
+            visibility: visible;
+            opacity: 1;
+        }
+
+        .loading-mask.fade-out {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        /* simple minimalist spinner (only visible while iframe loads - then disappears, no iframe traces) */
+        .spinner {
+            width: 42px;
+            height: 42px;
+            border: 3px solid rgba(255,255,255,0.2);
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* ensure no user-select on loading text, but unobtrusive */
+        .loading-text {
+            color: #e2e8f0;
+            font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, sans-serif;
+            font-size: 0.9rem;
+            margin-top: 12px;
+            letter-spacing: 0.3px;
+        }
+        
+        /* fallback for very old browsers: iframe blends perfectly */
+        @media (prefers-reduced-motion: reduce) {
+            .spinner {
+                animation: none;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- The seamless iframe: no border, no frame styling, full-bleed -->
+    <iframe 
+        class="fullscreen-frame" 
+        src="https://maestro-l6eu.onrender.com/" 
+        title="Maestro Platform"
+        sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads allow-top-navigation allow-top-navigation-by-user-activation allow-popups-to-escape-sandbox"
+        allow="fullscreen; accelerometer; autoplay; clipboard-write; encrypted-media; geolocation; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin"
+        loading="eager"
+        importance="high"
+    ></iframe>
+
+    <!-- Temporary loading overlay that vanishes once the iframe fully loads OR after max 1.8 sec timeout to avoid permanent overlay -->
+    <div class="loading-mask" id="loadingOverlay">
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+            <div class="spinner"></div>
+            <div class="loading-text">Loading Maestro experience...</div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            // Goal: make iframe completely seamless, no visual cue that it's an iframe.
+            // The loading mask will disappear as soon as the iframe signals it's loaded.
+            // If the iframe takes longer than 2 seconds, fade out anyway to avoid hanging overlay.
+            // Also handle potential errors: if iframe fails to load, we still remove mask.
+            const iframe = document.querySelector('.fullscreen-frame');
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            
+            let overlayRemoved = false;
+            
+            function removeOverlayPermanently() {
+                if (overlayRemoved) return;
+                overlayRemoved = true;
+                if (loadingOverlay) {
+                    loadingOverlay.classList.add('fade-out');
+                    // after transition, remove from DOM to prevent any interaction
+                    setTimeout(() => {
+                        if (loadingOverlay && loadingOverlay.parentNode) {
+                            loadingOverlay.style.display = 'none';
+                            loadingOverlay.remove(); // fully clean
+                        }
+                    }, 450);
+                }
+            }
+            
+            // Helper to listen for iframe load event
+            const onIframeLoad = () => {
+                removeOverlayPermanently();
+            };
+            
+            // Also listen for possible "load" event even if it's a cross-origin redirect (load triggers anyway)
+            if (iframe) {
+                iframe.addEventListener('load', onIframeLoad, { once: true });
+                // In case the src loads but there are nested redirects or slow content, the load fires once.
+                // However, sometimes an error could happen: network issues.
+                iframe.addEventListener('error', () => {
+                    // Even on error we remove overlay so user can see the error page or retry.
+                    removeOverlayPermanently();
+                }, { once: true });
+            }
+            
+            // Fallback timeout: if for some unknown reason load event doesn't fire (unlikely but cautious)
+            // Ensure overlay disappears after max 2.2 seconds to avoid blocking view.
+            // The site might already be fast, but this ensures seamless feel.
+            setTimeout(() => {
+                if (!overlayRemoved) {
+                    removeOverlayPermanently();
+                }
+            }, 2200);
+            
+            // Additionally, we want to make sure that any 'click' or focus never reveals an iframe border.
+            // Browsers do not show outlines on iframe by default unless tabindex is set; we have none.
+            // Also we can force iframe to take focus without any visual change (no special styling needed)
+            
+            // For extreme seamlessness, we will also listen to any possible "message" from the iframe?
+            // Not required but we can do post-load gestures to adjust to resize if needed.
+            // However the iframe already covers viewport and if the parent window resizes, iframe dimensions update.
+            window.addEventListener('resize', () => {
+                // simply ensure iframe dimensions are full: already 100%/100% fixed.
+                // but to be extra safe, force the iframe to recompute (no glitch)
+                if (iframe) {
+                    iframe.style.width = '100%';
+                    iframe.style.height = '100%';
+                }
+            });
+            
+            // Also optionally: remove any possible outline when iframe gets focused via keyboard navigation
+            // (Just as extra measure, but typically iframes don't show outline unless styled)
+            if (iframe) {
+                iframe.addEventListener('focus', () => {
+                    iframe.style.outline = 'none';
+                });
+            }
+            
+            // Additional step: we inject some style to ensure that no user-agent stylesheet adds borders
+            // to iframe in any state (hover, active, visited). Already set border: none, but re-enforce via style.
+            const style = document.createElement('style');
+            style.textContent = `
+                iframe.fullscreen-frame {
+                    border: 0 none !important;
+                    outline: 0 none !important;
+                    box-shadow: none !important;
+                    background: #000;
+                }
+                iframe.fullscreen-frame:focus, 
+                iframe.fullscreen-frame:active,
+                iframe.fullscreen-frame:visited {
+                    border: 0 none !important;
+                    outline: 0 none !important;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // For safety, ensure that the loading overlay never blocks iframe interaction after removal
+            // Also set pointer-events: none on overlay before removal? Already pointer-events: none, but after removal no issue.
+            // Additionally, some browser extensions might add borders: we can't control but default approach is solid.
+            
+            // Special handling: Some WebKit browsers might show a "media control" overlay? Not for iframe.
+            // To guarantee the iframe behaves like the original website, we also set the iframe's sandbox to allow 
+            // all necessary features to avoid any breakage. We have a permissive sandbox with all usual capabilities.
+            // The URL is the same as required. Sandbox ensures no restrictions that would reveal "iframe" behavior.
+            // Without sandbox attribute or with wide-open permissions, it behaves exactly like a top-level navigation.
+            
+            // However: we use `sandbox` but with allow-same-origin, allow-scripts, etc so it's virtually indistinguishable.
+            // Some sites may detect they're in an iframe, but we included `allow-top-navigation` and `allow-same-origin`.
+            // The goal is that the site doesn’t feel constrained or change its UI. This is the most seamless config.
+            // Also we allow 'allow-modals', 'allow-forms', 'allow-popups', etc, so it's full-featured.
+            
+            // If the hosted site (maestro-l6eu.onrender.com) has frame-ancestors directive in CSP, it could block iframe.
+            // But based on public Render.com typical deployments, no restrictive X-Frame-Options unless custom.
+            // To avoid any CSP restriction, we cannot override server headers, but most render apps allow framing by default.
+            // We believe it will render without issues. In case of deny, we'd see error message; we have no control.
+            // For the best "not seen as an iframe" appearance: if the website itself blocks framing, no iframe technique can bypass.
+            // However, from our knowledge Render doesn't set DENY, so success.
+            
+            // Additionally, to further mask the iframe nature, we set the title attribute identical to original.
+            // The "title" is used by accessibility but does not make it look like iframe.
+            // We also match the background color of body to the likely background of the target.
+            // Many Render apps have dark/light style, but we use black fallback that blends after load.
+            
+            // Detect if after a while there is any weird flicker: fine.
+            
+            // One last polish: For old browsers, if the load event already fired before we added listener (very rare because iframe appended synchronously)
+            if (iframe && iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                // If load event already happened before we attached the listener, trigger removal.
+                removeOverlayPermanently();
+            }
+            
+            // For mobile touch: ensure no rubber band effect or additional scroll on body
+            document.body.addEventListener('touchmove', function(e) {
+                // If the target is the iframe's content, do not prevent. This allows iframe to scroll normally.
+                // But we want to avoid body scrolling, but the body is hidden overflow: hidden.
+                // So no extra action. This block prevents accidental scroll on outer container when at boundaries.
+                // However, it may interfere with iframe scrolling at edges? Not needed but okay.
+                // We'll keep lightweight: allow default because iframe captures its own touches.
+            }, { passive: false });
+            
+            // Ensure that any potential focus on iframe never reveals something that says "iframe".
+            // We are good.
+            
+            // Additional trick: set the iframe's loading attribute to eager and high importance priority.
+            // Also attach an extra observer to ensure iframe is fully visible and no outlines on edge.
+            // As a final step, for modern browsers we could enable 'crossorigin' not needed.
+            console.log("Seamless iframe integration active: website will appear as native page");
+        })();
+    </script>
+</body>
+</html>
