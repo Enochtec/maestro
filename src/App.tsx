@@ -14,6 +14,9 @@ function markdownToHtml(md: string) {
     return `<pre class="message-code-block"><code${cls}>${code.replace(/</g, '&lt;')}</code></pre>`
   })
 
+  // Tables (pipe syntax)
+  out = renderTables(out)
+
   // Headings
   out = out.replace(/^### (.*$)/gim, '<h3>$1</h3>')
   out = out.replace(/^## (.*$)/gim, '<h2>$1</h2>')
@@ -26,12 +29,90 @@ function markdownToHtml(md: string) {
   out = out.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
 
   // Lists
-  out = out.replace(/(^|\n)\* (.*)/g, (_m, p1, item) => `${p1}<ul><li>${item}</li></ul>`)
+  out = out.replace(/(^|\n)[*+-] (.*)/g, (_m, p1, item) => `${p1}<ul><li>${item}</li></ul>`)
 
   // Paragraphs
   out = out.replace(/^(?!<h|<ul|<pre|<code|<li)(.+)$/gm, '<p>$1</p>')
 
   return out
+}
+
+function splitTableRow(line: string) {
+  const trimmed = line.trim()
+  if (!trimmed.includes('|')) return []
+  const cells = trimmed.split('|').map((cell) => cell.trim())
+  if (cells.length <= 1) return []
+  if (cells[0] === '') cells.shift()
+  if (cells[cells.length - 1] === '') cells.pop()
+  return cells
+}
+
+function parseTableAlignment(line: string) {
+  const parts = splitTableRow(line)
+  if (!parts.length) return null
+  const aligns: Array<'left' | 'right' | 'center'> = []
+  for (const part of parts) {
+    const trimmed = part.replace(/\s+/g, '')
+    if (!/^:?-+:?$/.test(trimmed)) return null
+    const left = trimmed.startsWith(':')
+    const right = trimmed.endsWith(':')
+    if (left && right) aligns.push('center')
+    else if (right) aligns.push('right')
+    else aligns.push('left')
+  }
+  return aligns
+}
+
+function buildTableHtml(headerCells: string[], alignments: Array<'left' | 'right' | 'center'>, rows: string[][]) {
+  const head = headerCells
+    .map((cell, idx) => `<th style="text-align:${alignments[idx] ?? 'left'}">${cell}</th>`)
+    .join('')
+  const body = rows
+    .map((row) =>
+      `<tr>${row.map((cell, idx) => `<td style="text-align:${alignments[idx] ?? 'left'}">${cell}</td>`).join('')}</tr>`,
+    )
+    .join('')
+  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+}
+
+function renderTables(md: string) {
+  const lines = md.split('\n')
+  const rendered: string[] = []
+  let i = 0
+  let inCodeBlock = false
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (line.includes('<pre class="message-code-block">')) inCodeBlock = true
+    if (inCodeBlock) {
+      rendered.push(line)
+      if (line.includes('</pre>')) inCodeBlock = false
+      i += 1
+      continue
+    }
+
+    const headerCells = splitTableRow(line)
+    const alignment = i + 1 < lines.length ? parseTableAlignment(lines[i + 1]) : null
+
+    if (headerCells.length && alignment) {
+      const rows: string[][] = []
+      i += 2
+      while (i < lines.length) {
+        const rowCells = splitTableRow(lines[i])
+        if (!rowCells.length) break
+        rows.push(rowCells)
+        i += 1
+      }
+      rendered.push(buildTableHtml(headerCells, alignment, rows))
+      continue
+    }
+
+    rendered.push(line)
+    i += 1
+  }
+
+  return rendered.join('\n')
 }
 import './App.css'
 import maestroLogo from './maestro_logo.png'
@@ -44,6 +125,13 @@ type Message = {
   content: string
   pending?: boolean
   streaming?: boolean
+}
+
+type TypingEntry = {
+  fullText: string
+  displayed: number
+  done: boolean
+  timer: ReturnType<typeof setInterval> | null
 }
 
 type Thread = {
@@ -69,6 +157,13 @@ type Attachment = {
 }
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const DEFAULT_THREAD_TITLE = 'New chat'
+const MAX_TITLE_WORDS = 5
+const MIN_TITLE_WORDS = 2
+const ATTACHMENT_MARKER = '\n\nAttached files:\n'
+const TITLE_UPPERCASE_WORDS = new Set(['ai', 'api', 'sql', 'db', 'ui', 'ux', 'otp', 'llm', 'pdf', 'cpu', 'gpu'])
+const SIDEBAR_OVERLAY_BREAKPOINT = 1024
+const TYPING_INTERVAL_MS = 28
 
 const primaryActions: SidebarItem[] = [
   { label: 'New chat', icon: 'edit_square' },
@@ -77,7 +172,7 @@ const primaryActions: SidebarItem[] = [
 
 const hiddenThreadTitles = new Set(['maestro launch', 'product notes', 'research digest'])
 
-function summarizeTopic(text: string) {
+function summarizeTopic(text: string, maxWords = MAX_TITLE_WORDS) {
   const cleaned = text
     .toLowerCase()
     .replace(/https?:\/\/\S+/g, '')
@@ -122,20 +217,101 @@ function summarizeTopic(text: string) {
     'why',
     'would',
     'you',
+    'help',
+    'issue',
+    'problem',
+    'question',
+    'support',
+    'request',
+    'please',
+    'want',
   ])
 
   const topicWords = words.filter((word) => word.length > 2 && !stopWords.has(word))
   if (!topicWords.length) return ''
 
-  return topicWords.slice(0, 5).join(' ')
+  return topicWords.slice(0, maxWords).join(' ')
 }
 
 function toTitleCase(text: string) {
   return text
     .split(' ')
     .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => (TITLE_UPPERCASE_WORDS.has(word) ? word.toUpperCase() : word.charAt(0).toUpperCase() + word.slice(1)))
     .join(' ')
+}
+
+function normalizeAiText(text: string) {
+  return text.replace(/[\u2013\u2014]/g, '-')
+}
+
+function stripAttachmentSummary(content: string) {
+  const idx = content.indexOf(ATTACHMENT_MARKER)
+  return (idx === -1 ? content : content.slice(0, idx)).trim()
+}
+
+function normalizePrompt(text: string) {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function isMeaningfulPrompt(text: string) {
+  const cleaned = normalizePrompt(text)
+  if (!cleaned) return false
+  const words = cleaned.split(' ').filter(Boolean)
+  const nonTrivial = words.filter((word) => word.length > 2)
+  const hasLongWord = words.some((word) => word.length >= 8)
+  return cleaned.length >= 12 || nonTrivial.length >= 2 || hasLongWord
+}
+
+function buildChatTitleFromPrompt(prompt: string) {
+  const combined = normalizePrompt(prompt)
+  if (!combined) return ''
+
+  const summary = summarizeTopic(combined, MAX_TITLE_WORDS)
+  let words = summary.split(' ').filter(Boolean)
+
+  const mergedWords: string[] = []
+  for (let i = 0; i < words.length; i += 1) {
+    const current = words[i]
+    const next = words[i + 1]
+    if (current === 'road' && next === 'map') {
+      mergedWords.push('roadmap')
+      i += 1
+      continue
+    }
+    mergedWords.push(current)
+  }
+  words = mergedWords
+
+  if (words.includes('roadmap')) {
+    words = words.filter((word) => !['introduction', 'intro', 'beginner', 'basics'].includes(word))
+  }
+
+  if (words.length < MIN_TITLE_WORDS) {
+    const cleaned = combined
+      .toLowerCase()
+      .replace(/[^a-z0-9\s'-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    words = cleaned.split(' ').filter(Boolean).filter((word) => word.length > 1).slice(0, MAX_TITLE_WORDS)
+  }
+
+  if (words.length === 1) {
+    words = [words[0], 'overview']
+  }
+
+  if (words.length < MIN_TITLE_WORDS) return ''
+  return toTitleCase(words.slice(0, MAX_TITLE_WORDS).join(' '))
+}
+
+function getMeaningfulPrompts(messages: Message[]) {
+  const prompts = messages
+    .filter((message) => message.role === 'user')
+    .map((message) => stripAttachmentSummary(message.content))
+    .map((prompt) => normalizePrompt(prompt))
+    .filter(Boolean)
+
+  return prompts.filter(isMeaningfulPrompt)
 }
 
 function cx(...classes: (string | false | undefined | null)[]) {
@@ -153,7 +329,7 @@ async function persistThreadMessage(threadId: number, role: Role, content: strin
   return (await response.json()) as Message
 }
 
-async function createChatThread(title = 'New chat') {
+async function createChatThread(title = DEFAULT_THREAD_TITLE) {
   const response = await fetch(`${apiBase}/threads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -173,18 +349,22 @@ function App() {
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isSidebarOpen, setIsSidebarOpen] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
+    typeof window !== 'undefined' ? window.innerWidth >= SIDEBAR_OVERLAY_BREAKPOINT : true,
   )
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 768 : false,
+    typeof window !== 'undefined' ? window.innerWidth < SIDEBAR_OVERLAY_BREAKPOINT : false,
   )
   const [chatQuery, setChatQuery] = useState('')
+  const [showAllRecents, setShowAllRecents] = useState(false)
   const [isBootstrapping, setIsBootstrapping] = useState(true)
   const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [isListening, setIsListening] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const inputRef = useRef<HTMLTextAreaElement | null>(null)
   const bottomRef = useRef<HTMLDivElement | null>(null)
   const skipNextThreadLoad = useRef(false)
+  const recognitionRef = useRef<any>(null)
+  const typingRef = useRef<Map<number, TypingEntry>>(new Map())
 
   const handleFilesSelected = async (files: FileList) => {
     const next: Attachment[] = []
@@ -288,6 +468,142 @@ function App() {
     toastTimer.current = setTimeout(() => setToast(null), 2200)
   }
 
+  const getTypingStep = (length: number) => {
+    if (length > 800) return 4
+    if (length > 400) return 3
+    return 2
+  }
+
+  const clearTypingEntry = (messageId: number) => {
+    const entry = typingRef.current.get(messageId)
+    if (entry?.timer) clearInterval(entry.timer)
+    typingRef.current.delete(messageId)
+  }
+
+  const startTypingTimer = (messageId: number) => {
+    const entry = typingRef.current.get(messageId)
+    if (!entry || entry.timer) return
+
+    entry.timer = setInterval(() => {
+      const current = typingRef.current.get(messageId)
+      if (!current) return
+
+      const step = getTypingStep(current.fullText.length)
+      const next = Math.min(current.displayed + step, current.fullText.length)
+      if (next !== current.displayed) current.displayed = next
+
+      setMessages((curr) =>
+        curr.map((m) =>
+          m.id === messageId
+            ? { ...m, content: current.fullText.slice(0, current.displayed), pending: false, streaming: true }
+            : m,
+        ),
+      )
+
+      if (current.done && current.displayed >= current.fullText.length) {
+        setMessages((curr) =>
+          curr.map((m) =>
+            m.id === messageId
+              ? { ...m, content: current.fullText, pending: false, streaming: false }
+              : m,
+          ),
+        )
+        if (current.timer) clearInterval(current.timer)
+        typingRef.current.delete(messageId)
+      }
+    }, TYPING_INTERVAL_MS)
+  }
+
+  const pushTypedChunk = (messageId: number, chunk: string) => {
+    const entry = typingRef.current.get(messageId) ?? {
+      fullText: '',
+      displayed: 0,
+      done: false,
+      timer: null,
+    }
+    entry.fullText += chunk
+    typingRef.current.set(messageId, entry)
+    startTypingTimer(messageId)
+  }
+
+  const finalizeTypedMessage = (messageId: number, fullText: string) => {
+    const entry = typingRef.current.get(messageId)
+    if (!entry) {
+      setMessages((curr) =>
+        curr.map((m) =>
+          m.id === messageId ? { ...m, content: fullText, pending: false, streaming: false } : m,
+        ),
+      )
+      return
+    }
+
+    entry.fullText = fullText
+    entry.done = true
+    typingRef.current.set(messageId, entry)
+    startTypingTimer(messageId)
+  }
+
+  const toggleVoiceInput = () => {
+    if (typeof window === 'undefined') return
+    const SpeechRecognitionCtor = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognitionCtor) {
+      showToast('Voice input is not supported in this browser')
+      return
+    }
+
+    if (!recognitionRef.current) {
+      const recognition = new SpeechRecognitionCtor()
+      recognition.continuous = false
+      recognition.interimResults = false
+      recognition.lang = 'en-US'
+
+      recognition.onresult = (event: any) => {
+        const transcript = Array.from(event.results || [])
+          .map((result: any) => result?.[0]?.transcript ?? '')
+          .join(' ')
+          .trim()
+        if (transcript) {
+          setInput((prev) => (prev ? `${prev} ${transcript}` : transcript))
+          inputRef.current?.focus()
+        }
+      }
+
+      recognition.onerror = (event: any) => {
+        setIsListening(false)
+        if (event?.error) {
+          showToast(`Voice input error: ${event.error}`)
+        } else {
+          showToast('Voice input error')
+        }
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+      }
+
+      recognitionRef.current = recognition
+    }
+
+    if (isListening) {
+      try {
+        recognitionRef.current.stop()
+      } catch {
+        // ignore stop errors
+      }
+      setIsListening(false)
+      return
+    }
+
+    try {
+      recognitionRef.current.start()
+      setIsListening(true)
+    } catch (error) {
+      setIsListening(false)
+      showToast('Unable to start voice input')
+      void error
+    }
+  }
+
   const activeThread = useMemo(
     () => threads.find((t) => t.id === activeThreadId) ?? threads[0] ?? { id: 0, title: 'Maestro AI' },
     [activeThreadId, threads],
@@ -297,16 +613,7 @@ function App() {
     if (!fullName) return 'Maestro'
     return fullName.split(/\s+/)[0]
   }, [user?.name])
-  const topicTitle = useMemo(() => {
-    const rawTopic = summarizeTopic(input)
-    return rawTopic ? toTitleCase(rawTopic) : ''
-  }, [input])
-  const activeThreadTitle = useMemo(() => {
-    if (activeThreadId && topicTitle && activeThread.id === activeThreadId) {
-      return topicTitle
-    }
-    return activeThread.title
-  }, [activeThread, activeThreadId, topicTitle])
+  const activeThreadTitle = useMemo(() => activeThread.title, [activeThread.title])
   const fetchThreadMessages = async (threadId: number) => {
     const response = await fetch(`${apiBase}/threads/${threadId}/messages`)
     if (!response.ok) throw new Error(await response.text())
@@ -374,7 +681,7 @@ function App() {
 
   useEffect(() => {
     const updateViewport = () => {
-      const mobile = window.innerWidth < 768
+      const mobile = window.innerWidth < SIDEBAR_OVERLAY_BREAKPOINT
       setIsMobileViewport(mobile)
       if (mobile) setIsSidebarOpen(false)
     }
@@ -411,18 +718,6 @@ function App() {
     }
   }, [activeThreadId, isSending])
 
-  useEffect(() => {
-    if (!activeThreadId) return
-    if (!topicTitle) return
-    if (activeThread.title === topicTitle) return
-
-    void fetch(`${apiBase}/threads/${activeThreadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: topicTitle }),
-    })
-  }, [activeThreadId, activeThread.title, topicTitle])
-
   const callAIStream = async (
     conversation: Message[],
     currentAttachments: Attachment[],
@@ -449,8 +744,9 @@ function App() {
       const data = JSON.parse(body) as { text?: string }
       const text = data.text?.trim()
       if (!text) throw new Error('AI returned an empty response')
-      onDelta(text)
-      return text
+      const normalized = normalizeAiText(text)
+      onDelta(normalized)
+      return normalized
     }
 
     const reader = response.body.getReader()
@@ -474,7 +770,7 @@ function App() {
 
         try {
           const parsed = JSON.parse(dataLine) as { text?: string }
-          const delta = parsed.text ?? ''
+          const delta = normalizeAiText(parsed.text ?? '')
           if (!delta) continue
           fullText += delta
           onDelta(delta)
@@ -486,6 +782,43 @@ function App() {
 
     if (!fullText) throw new Error('AI returned an empty response')
     return fullText
+  }
+
+  const updateThreadTitle = async (threadId: number, title: string) => {
+    const response = await fetch(`${apiBase}/threads/${threadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    })
+
+    if (!response.ok) throw new Error(await response.text())
+    const updated = (await response.json()) as Thread
+    setThreads((curr) => {
+      const exists = curr.some((thread) => thread.id === updated.id)
+      if (!exists) return [updated, ...curr]
+      return curr.map((thread) => (thread.id === updated.id ? { ...thread, title: updated.title } : thread))
+    })
+  }
+
+  const maybeGenerateThreadTitle = async (
+    threadId: number,
+    currentTitle: string,
+    nextMessages: Message[],
+  ) => {
+    const normalizedCurrent = currentTitle.trim().toLowerCase()
+    if (normalizedCurrent !== DEFAULT_THREAD_TITLE.toLowerCase()) return
+
+    const meaningfulPrompt = getMeaningfulPrompts(nextMessages)[0]
+    if (!meaningfulPrompt) return
+
+    const title = buildChatTitleFromPrompt(meaningfulPrompt)
+    if (!title) return
+
+    try {
+      await updateThreadTitle(threadId, title)
+    } catch (err) {
+      console.warn('[Maestro] Failed to update thread title', err)
+    }
   }
 
   const sendMessage = async (rawText: string) => {
@@ -514,34 +847,32 @@ function App() {
 
     try {
       let threadId = activeThreadId
+      let currentThreadTitle = activeThread.title
       if (!threadId) {
-        const thread = await createChatThread(topicTitle || 'New chat')
+        const thread = await createChatThread(DEFAULT_THREAD_TITLE)
         skipNextThreadLoad.current = true
         setThreads((curr) => [thread, ...curr])
         setActiveThreadId(thread.id)
         threadId = thread.id
+        currentThreadTitle = thread.title
       }
 
       await persistThreadMessage(threadId, 'user', messageText)
 
+      const nextMessages = [...messages, userMsg]
+      await maybeGenerateThreadTitle(threadId, currentThreadTitle, nextMessages)
+
       let responseText = ''
       await callAIStream([...messages, userMsg], currentAttachments, (chunk) => {
         responseText += chunk
-        setMessages((curr) =>
-          curr.map((m) =>
-            m.id === placeholder.id
-              ? { ...m, content: responseText, pending: false, streaming: true }
-              : m,
-          ),
-        )
+        pushTypedChunk(placeholder.id, chunk)
       })
+      finalizeTypedMessage(placeholder.id, responseText)
       await persistThreadMessage(threadId, 'assistant', responseText)
-      setMessages((curr) =>
-        curr.map((m) => (m.id === placeholder.id ? { ...m, pending: false, streaming: false } : m)),
-      )
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong.'
       setError(msg)
+      clearTypingEntry(placeholder.id)
       setMessages((curr) => curr.filter((m) => m.id !== placeholder.id))
     } finally {
       setIsSending(false)
@@ -560,9 +891,11 @@ function App() {
   const filteredThreads = threads.filter((t) => {
     const s = chatQuery.trim().toLowerCase()
     if (hiddenThreadTitles.has(t.title.trim().toLowerCase())) return false
-    if (t.title.trim().toLowerCase() === 'new chat') return false
+    if (t.title.trim().toLowerCase() === DEFAULT_THREAD_TITLE.toLowerCase()) return false
     return !s || t.title.toLowerCase().includes(s)
   })
+  const visibleRecents =
+    showAllRecents || chatQuery.trim() ? filteredThreads : filteredThreads.slice(0, 6)
 
   const hasConversation = messages.length > 0
   const legacyWelcomeRegex = /how may i/i
@@ -595,20 +928,8 @@ function App() {
       }
     }
 
-    const elRef = useRef<HTMLDivElement | null>(null)
-    useEffect(() => {
-      const el = elRef.current
-      if (!el) return
-      el.classList.add('msg-enter')
-      requestAnimationFrame(() => el.classList.add('msg-enter-active'))
-      const t = setTimeout(() => {
-        el.classList.remove('msg-enter', 'msg-enter-active')
-      }, 800)
-      return () => clearTimeout(t)
-    }, [])
-
     return (
-      <article ref={elRef} className={cx('message-row', message.role === 'user' ? 'user' : 'assistant')}>
+      <article className={cx('message-row', message.role === 'user' ? 'user' : 'assistant')}>
         {message.pending ? (
           <div className="avatar" aria-hidden>
             <span className="material-symbols-rounded" style={{ fontSize: 14 }}>smart_toy</span>
@@ -618,7 +939,7 @@ function App() {
         <div className={cx('flex min-w-0 flex-col', message.role === 'user' ? 'items-end' : 'items-start')}>
           <div
             className={cx(
-              'message-container max-w-[540px] text-xs leading-relaxed',
+              'message-container max-w-[540px] text-sm leading-relaxed',
               message.role === 'user' ? 'user self-end ml-10 md:ml-20' : 'assistant self-start mr-10 md:mr-20',
             )}
           >
@@ -647,7 +968,6 @@ function App() {
             <div>
               <div className="prose text-[#eae6df] message-body streaming">
                 <div dangerouslySetInnerHTML={{ __html: markdownToHtml(message.content) }} />
-                {message.streaming && <span className="caret" aria-hidden />}
               </div>
             </div>
           )}
@@ -709,7 +1029,7 @@ function App() {
 
   // composerInner should be available in the JSX below
   const composerInner = (
-    <div className="w-full max-w-[560px] mx-auto">
+    <div className="composer-wrap">
       {error && (
         <div className="mb-3 px-4 py-2.5 rounded-xl bg-red-500/10 border border-red-500/25 text-red-300 text-sm flex-shrink-0">
           {error}
@@ -721,7 +1041,7 @@ function App() {
           e.preventDefault()
           void sendMessage(input)
         }}
-        className="w-full max-w-[520px] mx-auto bg-white/[0.04] border border-white/[0.08] rounded-[36px] overflow-hidden flex-shrink-0 transition-all focus-within:border-[#c97a4b]/40 focus-within:[box-shadow:0_0_0_3px_rgba(201,122,75,0.08)]"
+        className="composer-shell"
       >
         <input
           ref={fileInputRef}
@@ -737,16 +1057,16 @@ function App() {
           }}
         />
         {attachments.length > 0 && (
-          <div className="px-4 pt-3 pb-2 flex flex-wrap gap-2 text-xs">
+          <div className="composer-attachments">
             {attachments.map((att) => (
               <span
                 key={att.id}
-                className="inline-flex items-center gap-2 rounded-full bg-white/[0.06] border border-white/[0.08] px-3 py-1 text-[#e8e3da]"
+                className="composer-attachment"
               >
                 {att.name}
                 <button
                   type="button"
-                  className="text-[#a9a39c] hover:text-[#f2b58b]"
+                  className="composer-attachment-remove"
                   aria-label={`Remove ${att.name}`}
                   onClick={() => removeAttachment(att.id)}
                 >
@@ -756,49 +1076,65 @@ function App() {
             ))}
           </div>
         )}
-        <textarea
-          ref={inputRef}
-          rows={1}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              void sendMessage(input)
-            }
-          }}
-          placeholder="Ask Maestro anything..."
-          className="w-full bg-transparent px-3 pt-0.5 pb-0.5 text-xs outline-none resize-none text-[#f3efe7] placeholder:text-[#6b6560] min-h-[22px]"
-        />
-        <div className="flex items-center justify-between px-4 pb-1 gap-3">
+        <div className="composer-row">
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="w-6 h-6 rounded-md bg-white/[0.05] border border-white/[0.08] flex items-center justify-center hover:bg-white/[0.1] transition-colors flex-shrink-0"
+            className="composer-btn composer-btn-left"
             aria-label="Add files"
             title="Add files"
           >
             <span
               className="material-symbols-outlined"
-              style={{ fontSize: 14, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+              style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
             >
-              attach_file
+              add
             </span>
           </button>
-          <button
-            type="submit"
-            disabled={isSending || isBootstrapping}
-            className="w-6 h-6 rounded-md bg-[#c97a4b] text-[#100d0c] disabled:opacity-50 hover:bg-[#d4895c] transition-colors flex items-center justify-center flex-shrink-0"
-            aria-label="Send message"
-            title="Send message"
-          >
-            <span
-              className="material-symbols-outlined"
-              style={{ fontSize: 14, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+          <textarea
+            ref={inputRef}
+            rows={1}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                void sendMessage(input)
+              }
+            }}
+            placeholder="Ask  anything"
+            className="composer-input"
+          />
+          <div className="composer-actions">
+            <button
+              type="button"
+              className={cx('composer-btn composer-btn-mic', isListening && 'is-listening')}
+              aria-label="Voice input"
+              title="Voice input"
+              onClick={toggleVoiceInput}
             >
-              {isSending ? 'hourglass_top' : 'send'}
-            </span>
-          </button>
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+              >
+                mic
+              </span>
+            </button>
+            <button
+              type="submit"
+              disabled={isSending || isBootstrapping}
+              className="composer-btn composer-btn-voice"
+              aria-label="Send message"
+              title="Send message"
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+              >
+                {isSending ? 'hourglass_top' : 'send'}
+              </span>
+            </button>
+          </div>
         </div>
       </form>
     </div>
@@ -813,15 +1149,16 @@ function App() {
         />
       )}
 
-      <aside className={cx(
-        'bg-[#070708] border-r border-white/[0.04] h-screen overflow-y-auto flex flex-col',
-        isMobileViewport && 'fixed left-0 top-0 z-30',
-        !isMobileViewport && 'flex-shrink-0',
-        isSidebarOpen ? 'w-72 p-4' : 'w-14 p-3',
-      )}>
+      {(isSidebarOpen || !isMobileViewport) && (
+        <aside className={cx(
+          'bg-[#070708] border-r border-white/[0.04] h-screen overflow-hidden flex flex-col',
+          isMobileViewport && 'fixed left-0 top-0 z-30',
+          !isMobileViewport && 'flex-shrink-0',
+          isSidebarOpen ? 'w-72 pl-3 pr-2 pt-4 pb-3' : 'w-14 p-3',
+        )}>
         {isSidebarOpen ? (
           <>
-            <div className="flex items-center justify-between gap-3 mb-6">
+            <div className="flex items-center justify-between gap-3 mb-4 pr-1 flex-shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <img
                   src={maestroLogo}
@@ -832,74 +1169,97 @@ function App() {
               </div>
               <button
                 type="button"
-                className="w-7 h-7 inline-flex items-center justify-center rounded-lg bg-white/[0.04] border border-white/[0.06]"
+                className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
                 onClick={() => setIsSidebarOpen(false)}
                 aria-label="Close sidebar"
                 title="Close sidebar"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>menu</span>
+                <svg
+                  className="w-4 h-4"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <rect width="18" height="18" x="3" y="3" rx="4" />
+                  <path d="M9 3v18" />
+                </svg>
               </button>
             </div>
 
-            <div className="px-1">
-              {primaryActions.map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => item.label === 'New chat' && startNewChat()}
-                  className="flex items-center gap-3 w-full text-left px-3 py-2 rounded hover:bg-white/[0.02] text-xs text-[#cec5bc]"
-                >
-                  <span className="material-symbols-rounded flex-shrink-0" style={{ fontSize: 14 }}>
-                    {item.icon}
-                  </span>
-                  <span>{item.label}</span>
-                </button>
-              ))}
-            </div>
-
-            <div className="px-1.5 mt-2">
-              <label className="flex items-center gap-2 px-2.5 py-1.75 rounded-xl bg-white/[0.04] border border-white/[0.06] cursor-text">
-                <span className="material-symbols-rounded text-[#8f877f]" style={{ fontSize: 13 }}>
-                  search
-                </span>
-                <input
-                  id="chat-search"
-                  type="search"
-                  value={chatQuery}
-                  onChange={(e) => setChatQuery(e.target.value)}
-                  placeholder="Search chats"
-                  className="flex-1 bg-transparent border-none outline-none text-xs text-[#f3efe7] placeholder:text-[#8f877f]"
-                />
-              </label>
-            </div>
-
-            <div className="px-1.5 mt-1.5">
-              <div className="flex items-center gap-2 px-1.5 py-1 text-[#8f877f] text-xs font-semibold uppercase tracking-wide">
-                <span className="material-symbols-rounded" style={{ fontSize: 12 }}>history</span>
-                <span>Recents</span>
+            <div className="sidebar-scroll thin-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
+              <div className="px-1">
+                {primaryActions.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    onClick={() => item.label === 'New chat' && startNewChat()}
+                    className="flex items-center gap-3 w-full text-left px-3 py-2 rounded hover:bg-white/[0.02] text-[10px] text-[#cec5bc]"
+                  >
+                    <span className="material-symbols-rounded flex-shrink-0" style={{ fontSize: 14 }}>
+                      {item.icon}
+                    </span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
               </div>
-              {filteredThreads.map((thread) => (
-                <button
-                  key={thread.id}
-                  type="button"
-                  className={cx(
-                    'w-full text-left px-1 py-1.5 text-xs font-medium mb-0.5 transition-colors truncate whitespace-nowrap',
-                    thread.id === activeThread.id ? 'text-[#f2b58b]' : 'text-[#a9a39c]',
+
+              <div className="px-1.5 mt-2">
+                <label className="flex items-center gap-2 px-2.5 py-1.75 rounded-xl bg-white/[0.04] border border-white/[0.06] cursor-text">
+                  <span className="material-symbols-rounded text-[#8f877f]" style={{ fontSize: 13 }}>
+                    search
+                  </span>
+                  <input
+                    id="chat-search"
+                    type="search"
+                    value={chatQuery}
+                    onChange={(e) => setChatQuery(e.target.value)}
+                    placeholder="Search chats"
+                    className="flex-1 bg-transparent border-none outline-none text-[10px] text-[#f3efe7] placeholder:text-[#8f877f]"
+                  />
+                </label>
+              </div>
+
+              <div className="px-1.5 mt-1.5">
+                <div className="flex items-center gap-2 px-1.5 py-1 text-[#8f877f] text-[10px] font-semibold uppercase tracking-wide">
+                  <span className="material-symbols-rounded" style={{ fontSize: 12 }}>history</span>
+                  <span>Recents</span>
+                  {filteredThreads.length > 6 && !chatQuery.trim() && (
+                    <button
+                      type="button"
+                      className="ml-auto w-5 h-5 inline-flex items-center justify-center rounded-md text-[#8f877f] hover:text-[#f2b58b] hover:bg-white/[0.04] transition-colors"
+                      title={showAllRecents ? 'Show fewer chats' : 'Show more chats'}
+                      aria-label={showAllRecents ? 'Show fewer chats' : 'Show more chats'}
+                      onClick={() => setShowAllRecents((prev) => !prev)}
+                    >
+                      <span className="material-symbols-rounded" style={{ fontSize: 14 }}>more_horiz</span>
+                    </button>
                   )}
-                  onClick={() => setActiveThreadId(thread.id)}
-                >
-                  {thread.id === activeThreadId ? activeThreadTitle : thread.title}
-                </button>
-              ))}
-              {filteredThreads.length === 0 && (
-                <p className="px-1 py-1.5 text-xs text-[#6f6963]">No recent chats</p>
-              )}
+                </div>
+                {visibleRecents.map((thread) => (
+                  <button
+                    key={thread.id}
+                    type="button"
+                    className={cx(
+                      'w-full text-left px-1 py-1.5 text-[9px] font-medium mb-0.5 transition-colors truncate whitespace-nowrap',
+                      thread.id === activeThread.id ? 'text-[#f2b58b]' : 'text-[#a9a39c]',
+                    )}
+                    onClick={() => setActiveThreadId(thread.id)}
+                  >
+                    {thread.id === activeThreadId ? activeThreadTitle : thread.title}
+                  </button>
+                ))}
+                {filteredThreads.length === 0 && (
+                  <p className="px-1 py-1.5 text-[9px] text-[#6f6963]">No recent chats</p>
+                )}
+              </div>
             </div>
 
-            <div className="flex flex-col gap-1.5 px-1.5 pt-2.5 pb-4 mt-2 border-t border-white/[0.06] w-full flex-shrink-0">
+            <div className="sidebar-footer flex flex-col gap-1.5 px-1.5 pt-2.5 pb-4 border-t border-white/[0.06] w-full flex-shrink-0">
               <button
                 type="button"
-                className="flex items-center gap-2 px-1 py-1.5 text-xs font-semibold text-[#cec5bc] transition-colors"
+                className="flex items-center gap-2 px-1 py-1.5 text-[10px] font-semibold text-[#cec5bc] transition-colors"
                 title="Settings"
               >
                 <span className="material-symbols-rounded flex-shrink-0" style={{ fontSize: 14 }}>
@@ -920,7 +1280,7 @@ function App() {
                     account_circle
                   </span>
                 )}
-                <strong className="text-xs truncate">{user?.name ?? 'Maestro GPT'}</strong>
+                <strong className="text-[10px] truncate">{user?.name ?? 'Maestro GPT'}</strong>
               </div>
             </div>
           </>
@@ -928,12 +1288,22 @@ function App() {
           <div className="flex flex-col items-center gap-4 pt-2">
             <button
               type="button"
-              className="w-8 h-8 inline-flex items-center justify-center rounded-lg bg-white/[0.04] border border-white/[0.06]"
+              className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
               onClick={() => setIsSidebarOpen(true)}
               aria-label="Open sidebar"
               title="Open sidebar"
             >
-              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>menu</span>
+              <svg
+                className="w-4 h-4"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="4" />
+                <path d="M9 3v18" />
+              </svg>
             </button>
             {primaryActions.map((item) => (
               <button
@@ -990,34 +1360,67 @@ function App() {
             </button>
           </div>
         )}
-      </aside>
+        </aside>
+      )}
 
-      <main className="flex w-full flex-1 min-w-0 flex-col overflow-hidden">
+      <main
+        className="flex w-full flex-1 min-w-0 flex-col overflow-hidden"
+        onClick={() => {
+          if (isSidebarOpen && isMobileViewport) setIsSidebarOpen(false)
+        }}
+      >
         <header className="flex items-center gap-2 px-4 py-2.5 md:px-6 border-b border-white/[0.06] flex-shrink-0">
+          {isMobileViewport && !isSidebarOpen && (
+            <button
+              type="button"
+              className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+              onClick={() => setIsSidebarOpen(true)}
+              aria-label="Open sidebar"
+              title="Open sidebar"
+            >
+              <svg
+                className="w-4 h-4"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <rect width="18" height="18" x="3" y="3" rx="4" />
+                <path d="M9 3v18" />
+              </svg>
+            </button>
+          )}
           {!isSidebarOpen && (
             <div className="flex items-center gap-2 min-w-0">
               <img
                 src={maestroLogo}
                 alt="Maestro AI"
-                className="h-5 w-5 rounded-lg object-cover flex-shrink-0"
+                className="h-6 w-6 rounded-lg object-cover flex-shrink-0"
               />
-              <span className="text-xs font-semibold text-[#f3efe7] truncate">Maestro AI</span>
+              <span className="text-sm font-semibold text-[#f3efe7] truncate">Maestro AI</span>
             </div>
           )}
           <div className="flex items-center gap-2 min-w-0 ml-auto">
             <h2 className="font-semibold text-xs truncate">{headerDisplayName}</h2>
             <button
               type="button"
-              className="w-7 h-7 rounded-lg bg-white/[0.06] border border-white/[0.08] flex items-center justify-center hover:bg-white/[0.1] transition-colors flex-shrink-0"
+              className="inline-flex items-center justify-center p-1 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors flex-shrink-0"
               aria-label="Logout"
               onClick={() => setShowLogoutConfirm(true)}
             >
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: 14, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+              <svg
+                className="w-4 h-4"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth="2"
               >
-                logout
-              </span>
+                <path d="M10 7v-2a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-2" />
+                <path d="M15 12H3" />
+                <path d="M7 8l-4 4 4 4" />
+              </svg>
             </button>
           </div>
         </header>
@@ -1034,7 +1437,7 @@ function App() {
           )}
 
           {!isWelcomeOnly && hasConversation && (
-            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3">
+            <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 thin-scrollbar">
               {visibleMessages.map((message) => (
                 <MessageBubble key={message.id} message={message} />
               ))}

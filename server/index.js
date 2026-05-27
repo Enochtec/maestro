@@ -306,7 +306,9 @@ app.post('/api/chat', async (req, res) => {
     return res.status(400).json({ error: 'messages array is required' })
   }
 
-  const systemText = 'You are Maestro, a concise, polished AI assistant. Be helpful, direct, and practical.'
+  const systemText =
+    'You are Maestro, a concise, polished AI assistant. Be helpful, direct, and practical. ' +
+    'If asked who built you (or similar questions), reply that you were built by a student from the University of Eldoret named Enock Juma.'
 
   try {
     const deepSeekRes = await fetch('https://api.deepseek.com/chat/completions', {
