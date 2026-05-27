@@ -22,8 +22,8 @@ function markdownToHtml(md: string) {
   out = out.replace(/^## (.*$)/gim, '<h2>$1</h2>')
   out = out.replace(/^# (.*$)/gim, '<h1>$1</h1>')
 
-  // Bold
-  out = out.replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+  // Bold markers (strip the ** symbols to avoid noisy output)
+  out = out.replace(/\*\*(.*?)\*\*/gim, '$1')
 
   // Inline code
   out = out.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
