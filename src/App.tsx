@@ -115,7 +115,6 @@ function renderTables(md: string) {
   return rendered.join('\n')
 }
 import './App.css'
-import maestroLogo from './maestro_logo.png'
 
 type Role = 'user' | 'assistant'
 
@@ -157,6 +156,7 @@ type Attachment = {
 }
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? '/api'
+const brandLogoUrl = '/logo.svg'
 const DEFAULT_THREAD_TITLE = 'New chat'
 const MAX_TITLE_WORDS = 5
 const MIN_TITLE_WORDS = 2
@@ -992,7 +992,7 @@ function App() {
                 <span className="material-symbols-outlined" style={{ fontSize: 13 }}>content_copy</span>
               </button>
 
-              <button className={cx('action-btn', liked && 'bg-[#c97a4b]/20')} title="Like" onClick={() => setLiked((s) => !s)}>
+              <button className={cx('action-btn', liked && 'bg-[#2fbf71]/20')} title="Like" onClick={() => setLiked((s) => !s)}>
                 <span className="material-symbols-outlined" style={{ fontSize: 13 }}>thumb_up</span>
               </button>
 
@@ -1151,17 +1151,17 @@ function App() {
 
       {(isSidebarOpen || !isMobileViewport) && (
         <aside className={cx(
-          'bg-[#070708] border-r border-white/[0.04] h-screen overflow-hidden flex flex-col',
+          'bg-[#070708] border-r border-white/[0.04] h-screen overflow-hidden flex flex-col sidebar-panel',
           isMobileViewport && 'fixed left-0 top-0 z-30',
           !isMobileViewport && 'flex-shrink-0',
-          isSidebarOpen ? 'w-72 pl-3 pr-2 pt-4 pb-3' : 'w-14 p-3',
+          isSidebarOpen ? 'w-64 pl-4 pr-3 pt-4 pb-3' : 'w-14 p-3',
         )}>
         {isSidebarOpen ? (
           <>
-            <div className="flex items-center justify-between gap-3 mb-4 pr-1 flex-shrink-0">
+            <div className="flex items-center justify-between gap-3 mb-4 pr-2 flex-shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <img
-                  src={maestroLogo}
+                  src={brandLogoUrl}
                   alt="Maestro AI"
                   className="h-5 w-5 rounded-lg object-cover flex-shrink-0 bg-white/5 shadow-lg"
                 />
@@ -1189,15 +1189,15 @@ function App() {
             </div>
 
             <div className="sidebar-scroll thin-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto pr-1">
-              <div className="px-1">
+              <div className="px-0">
                 {primaryActions.map((item) => (
                   <button
                     key={item.label}
                     type="button"
                     onClick={() => item.label === 'New chat' && startNewChat()}
-                    className="flex items-center gap-3 w-full text-left px-3 py-2 rounded hover:bg-white/[0.02] text-[10px] text-[#cec5bc]"
+                    className="flex items-center gap-3 w-full text-left px-0 py-3 rounded hover:bg-white/[0.02] sidebar-text"
                   >
-                    <span className="material-symbols-rounded flex-shrink-0" style={{ fontSize: 14 }}>
+                    <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap flex-shrink-0">
                       {item.icon}
                     </span>
                     <span>{item.label}</span>
@@ -1205,9 +1205,9 @@ function App() {
                 ))}
               </div>
 
-              <div className="px-1.5 mt-2">
-                <label className="flex items-center gap-2 px-2.5 py-1.75 rounded-xl bg-white/[0.04] border border-white/[0.06] cursor-text">
-                  <span className="material-symbols-rounded text-[#8f877f]" style={{ fontSize: 13 }}>
+              <div className="px-0 mt-1">
+                <label className="flex items-center gap-2 px-0 py-3 rounded-xl cursor-text">
+                  <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap">
                     search
                   </span>
                   <input
@@ -1216,24 +1216,24 @@ function App() {
                     value={chatQuery}
                     onChange={(e) => setChatQuery(e.target.value)}
                     placeholder="Search chats"
-                    className="flex-1 bg-transparent border-none outline-none text-[10px] text-[#f3efe7] placeholder:text-[#8f877f]"
+                    className="flex-1 bg-transparent border-none outline-none sidebar-text sidebar-search-input"
                   />
                 </label>
               </div>
 
-              <div className="px-1.5 mt-1.5">
-                <div className="flex items-center gap-2 px-1.5 py-1 text-[#8f877f] text-[10px] font-semibold uppercase tracking-wide">
-                  <span className="material-symbols-rounded" style={{ fontSize: 12 }}>history</span>
+              <div className="px-0 mt-1">
+                <div className="flex items-center gap-2 px-0 py-2.5 sidebar-text font-semibold tracking-wide">
+                  <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap">history</span>
                   <span>Recents</span>
                   {filteredThreads.length > 6 && !chatQuery.trim() && (
                     <button
                       type="button"
-                      className="ml-auto w-5 h-5 inline-flex items-center justify-center rounded-md text-[#8f877f] hover:text-[#f2b58b] hover:bg-white/[0.04] transition-colors"
+                      className="ml-auto w-5 h-5 inline-flex items-center justify-center rounded-md hover:bg-white/[0.04] transition-colors"
                       title={showAllRecents ? 'Show fewer chats' : 'Show more chats'}
                       aria-label={showAllRecents ? 'Show fewer chats' : 'Show more chats'}
                       onClick={() => setShowAllRecents((prev) => !prev)}
                     >
-                      <span className="material-symbols-rounded" style={{ fontSize: 14 }}>more_horiz</span>
+                      <span className="material-symbols-rounded sidebar-icon">more_horiz</span>
                     </button>
                   )}
                 </div>
@@ -1241,34 +1241,31 @@ function App() {
                   <button
                     key={thread.id}
                     type="button"
-                    className={cx(
-                      'w-full text-left px-1 py-1.5 text-[9px] font-medium mb-0.5 transition-colors truncate whitespace-nowrap',
-                      thread.id === activeThread.id ? 'text-[#f2b58b]' : 'text-[#a9a39c]',
-                    )}
+                    className="w-full text-left px-4 py-2.5 sidebar-text font-medium mb-1 transition-colors truncate whitespace-nowrap"
                     onClick={() => setActiveThreadId(thread.id)}
                   >
                     {thread.id === activeThreadId ? activeThreadTitle : thread.title}
                   </button>
                 ))}
                 {filteredThreads.length === 0 && (
-                  <p className="px-1 py-1.5 text-[9px] text-[#6f6963]">No recent chats</p>
+                  <p className="px-0 py-2.5 sidebar-text">No recent chats</p>
                 )}
               </div>
             </div>
 
-            <div className="sidebar-footer flex flex-col gap-1.5 px-1.5 pt-2.5 pb-4 border-t border-white/[0.06] w-full flex-shrink-0">
+            <div className="sidebar-footer flex flex-col gap-1 px-0 pt-2.5 pb-4 border-t border-white/[0.06] w-full flex-shrink-0">
               <button
                 type="button"
-                className="flex items-center gap-2 px-1 py-1.5 text-[10px] font-semibold text-[#cec5bc] transition-colors"
+                className="flex items-center gap-2 px-0 py-3 sidebar-text font-semibold transition-colors"
                 title="Settings"
               >
-                <span className="material-symbols-rounded flex-shrink-0" style={{ fontSize: 14 }}>
+                <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap flex-shrink-0">
                   settings
                 </span>
                 <span>Settings</span>
               </button>
 
-              <div className="flex items-center gap-2 px-1 py-1.5 text-[#f2b58b]">
+              <div className="flex items-center gap-2 px-0 py-3">
                 {user?.avatarUrl ? (
                   <img
                     src={user.avatarUrl}
@@ -1276,11 +1273,11 @@ function App() {
                     className="w-5 h-5 rounded-full flex-shrink-0 object-cover"
                   />
                 ) : (
-                  <span className="material-symbols-rounded flex-shrink-0" style={{ fontSize: 18 }}>
+                  <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap flex-shrink-0">
                     account_circle
                   </span>
                 )}
-                <strong className="text-[10px] truncate">{user?.name ?? 'Maestro GPT'}</strong>
+                <strong className="sidebar-text truncate">{user?.name ?? 'Maestro GPT'}</strong>
               </div>
             </div>
           </>
@@ -1313,7 +1310,7 @@ function App() {
                   if (item.label === 'New chat') startNewChat()
                   setIsSidebarOpen(true)
                 }}
-                className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#cec5bc] hover:bg-white/[0.06]"
+                className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-white/[0.06]"
                 title={item.label}
                 aria-label={item.label}
               >
@@ -1324,7 +1321,7 @@ function App() {
             ))}
             <button
               type="button"
-              className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#cec5bc] hover:bg-white/[0.06]"
+              className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-white/[0.06]"
               title="Search"
               aria-label="Search"
               onClick={() => setIsSidebarOpen(true)}
@@ -1333,7 +1330,7 @@ function App() {
             </button>
             <button
               type="button"
-              className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#cec5bc] hover:bg-white/[0.06]"
+              className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-white/[0.06]"
               title="Recents"
               aria-label="Recents"
               onClick={() => setIsSidebarOpen(true)}
@@ -1342,7 +1339,7 @@ function App() {
             </button>
             <button
               type="button"
-              className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#cec5bc] hover:bg-white/[0.06]"
+              className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-white/[0.06]"
               title="Settings"
               aria-label="Settings"
               onClick={() => setIsSidebarOpen(true)}
@@ -1351,7 +1348,7 @@ function App() {
             </button>
             <button
               type="button"
-              className="w-8 h-8 inline-flex items-center justify-center rounded-lg text-[#cec5bc] hover:bg-white/[0.06]"
+              className="w-8 h-8 inline-flex items-center justify-center rounded-lg hover:bg-white/[0.06]"
               title={user?.name ?? 'Profile'}
               aria-label="Profile"
               onClick={() => setIsSidebarOpen(true)}
@@ -1394,7 +1391,7 @@ function App() {
           {!isSidebarOpen && (
             <div className="flex items-center gap-2 min-w-0">
               <img
-                src={maestroLogo}
+                src={brandLogoUrl}
                 alt="Maestro AI"
                 className="h-6 w-6 rounded-lg object-cover flex-shrink-0"
               />
@@ -1428,7 +1425,7 @@ function App() {
           {isWelcomeOnly && (
             <div className="flex-1 min-h-0 flex items-center justify-center px-4 text-center">
               <div className="w-full max-w-[52rem] px-2 py-2 bg-transparent mb-2">
-                <h2 className="mx-auto text-center text-base sm:text-base md:text-lg font-medium leading-snug text-[#f7f2ea] break-words mb-6">
+                <h2 className="mx-auto text-center text-sm sm:text-sm md:text-base font-medium leading-snug text-[#f7f2ea] break-words mb-6">
                   {welcomeLine}
                 </h2>
                 {composerInner}
@@ -1460,7 +1457,7 @@ function App() {
           className="toast-enter fixed top-5 left-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/[0.08] shadow-2xl pointer-events-none"
           style={{ background: 'rgba(18,19,24,0.96)' }}
         >
-          <span className="material-symbols-outlined text-[#c97a4b]" style={{ fontSize: 14 }}>check_circle</span>
+          <span className="material-symbols-outlined text-[#2fbf71]" style={{ fontSize: 14 }}>check_circle</span>
           <span className="text-xs font-medium text-[#f3efe7]">{toast}</span>
         </div>
       )}
@@ -1487,7 +1484,7 @@ function App() {
               </button>
               <button
                 onClick={() => { logout(); setShowLogoutConfirm(false) }}
-                className="px-3 py-1.5 rounded-lg bg-[#c97a4b] hover:bg-[#d4895c] text-[#100d0c] text-xs font-semibold transition-colors"
+                className="px-3 py-1.5 rounded-lg bg-[#2fbf71] hover:bg-[#3ad784] text-[#100d0c] text-xs font-semibold transition-colors"
               >
                 Log out
               </button>
@@ -1500,3 +1497,4 @@ function App() {
 }
 
 export default App
+

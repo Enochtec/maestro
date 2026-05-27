@@ -59,16 +59,16 @@ export default function ForgotPassword({ onNavigateLogin }: Props) {
             <div className="flex flex-col items-center text-center gap-4 py-2">
               <div
                 className="w-14 h-14 rounded-2xl flex items-center justify-center"
-                style={{ background: 'rgba(201,122,75,0.15)', border: '1px solid rgba(201,122,75,0.25)' }}
+                style={{ background: 'rgba(47,191,113,0.15)', border: '1px solid rgba(47,191,113,0.25)' }}
               >
-                <span className="material-symbols-outlined text-[#c97a4b]" style={{ fontSize: 28 }}>
+                <span className="material-symbols-outlined text-[#2fbf71]" style={{ fontSize: 28 }}>
                   mark_email_read
                 </span>
               </div>
               <div>
                 <h2 className="text-[1.05rem] font-semibold text-[#f3efe7] mb-2">Check your inbox</h2>
                 <p className="text-[#8f877f] text-sm leading-relaxed">
-                  If an account exists for <span className="text-[#c97a4b]">{email}</span>, you'll receive a
+                  If an account exists for <span className="text-[#2fbf71]">{email}</span>, you'll receive a
                   password reset link shortly.
                 </p>
               </div>
@@ -76,7 +76,7 @@ export default function ForgotPassword({ onNavigateLogin }: Props) {
                 Didn't receive it? Check your spam folder or{' '}
                 <button
                   onClick={() => { setSent(false); setEmail('') }}
-                  className="text-[#c97a4b] hover:text-[#d4895c] transition-colors"
+                  className="text-[#2fbf71] hover:text-[#3ad784] transition-colors"
                 >
                   try again
                 </button>
@@ -131,7 +131,7 @@ export default function ForgotPassword({ onNavigateLogin }: Props) {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-[#c97a4b] hover:bg-[#d4895c] active:bg-[#b86d3e] text-[#100d0c] font-semibold py-[11px] rounded-[42px] transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="w-full bg-[#2fbf71] hover:bg-[#3ad784] active:bg-[#249d5d] text-[#100d0c] font-semibold py-[11px] rounded-[42px] transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <>
@@ -152,7 +152,7 @@ export default function ForgotPassword({ onNavigateLogin }: Props) {
             Remember your password?{' '}
             <button
               onClick={onNavigateLogin}
-              className="text-[#c97a4b] hover:text-[#d4895c] transition-colors font-medium"
+              className="text-[#2fbf71] hover:text-[#3ad784] transition-colors font-medium"
             >
               Back to sign in
             </button>
@@ -162,3 +162,4 @@ export default function ForgotPassword({ onNavigateLogin }: Props) {
     </div>
   )
 }
+

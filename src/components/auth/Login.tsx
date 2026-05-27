@@ -130,7 +130,7 @@ export default function Login({ onNavigateSignup, onNavigateForgot }: Props) {
                 <button
                   type="button"
                   onClick={onNavigateForgot}
-                  className="text-xs text-[#c97a4b] hover:text-[#d4895c] transition-colors"
+                  className="text-xs text-[#2fbf71] hover:text-[#3ad784] transition-colors"
                 >
                   Forgot password?
                 </button>
@@ -173,7 +173,7 @@ export default function Login({ onNavigateSignup, onNavigateForgot }: Props) {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full bg-[#c97a4b] hover:bg-[#d4895c] active:bg-[#b86d3e] text-[#100d0c] font-semibold py-[11px] rounded-[42px] transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-1"
+              className="w-full bg-[#2fbf71] hover:bg-[#3ad784] active:bg-[#249d5d] text-[#100d0c] font-semibold py-[11px] rounded-[42px] transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed mt-1"
             >
               {isLoading ? (
                 <>
@@ -191,7 +191,7 @@ export default function Login({ onNavigateSignup, onNavigateForgot }: Props) {
           Don't have an account?{' '}
           <button
             onClick={onNavigateSignup}
-            className="text-[#c97a4b] hover:text-[#d4895c] transition-colors font-medium"
+            className="text-[#2fbf71] hover:text-[#3ad784] transition-colors font-medium"
           >
             Create account
           </button>
@@ -200,3 +200,4 @@ export default function Login({ onNavigateSignup, onNavigateForgot }: Props) {
     </div>
   )
 }
+

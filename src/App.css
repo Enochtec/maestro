@@ -18,7 +18,7 @@
 }
 
 :root {
-  font-size: 17px;
+  font-size: 15px;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
@@ -28,6 +28,28 @@ input,
 textarea,
 select {
   font-family: inherit;
+}
+
+.sidebar-text {
+  font-size: 14px;
+  line-height: 1.15;
+  color: #ffffff;
+}
+
+.sidebar-icon {
+  font-size: 14px;
+  color: #ffffff;
+}
+
+.sidebar-icon-wrap {
+  width: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .thin-scrollbar {
@@ -71,8 +93,8 @@ select {
 }
 
 .composer-shell:focus-within {
-  border-color: rgba(201,122,75,0.45);
-  box-shadow: 0 24px 60px rgba(0,0,0,0.55), 0 0 0 3px rgba(201,122,75,0.12);
+  border-color: rgba(47,191,113,0.45);
+  box-shadow: 0 24px 60px rgba(0,0,0,0.55), 0 0 0 3px rgba(47,191,113,0.12);
 }
 
 .composer-row {
@@ -107,7 +129,7 @@ select {
 }
 
 .composer-attachment-remove:hover {
-  color: #f2b58b;
+  color: #7be3aa;
 }
 
 .composer-input {
@@ -174,7 +196,7 @@ select {
 }
 
 .composer-btn.is-listening {
-  color: #f2b58b;
+  color: #7be3aa;
 }
 
 .composer-btn:disabled {
@@ -264,7 +286,7 @@ select {
   width: 6px;
   height: 6px;
   margin: 0 2px;
-  background: #c97a4b;
+  background: #2fbf71;
   border-radius: 50%;
   opacity: 0.3;
   animation: typingDots 1s infinite;
@@ -288,7 +310,7 @@ select {
 
 .caret {
   width: 1px;
-  background: #c97a4b;
+  background: #2fbf71;
   display: inline-block;
   margin-left: 6px;
   animation: blinkCaret 1s steps(2,end) infinite;
@@ -320,7 +342,7 @@ select {
   position: absolute;
   right: 10px;
   top: 8px;
-  background: rgba(201,122,75,0.96);
+  background: rgba(47,191,113,0.96);
   color: #100d0c;
   padding: 4px 8px;
   border-radius: 6px;
@@ -403,7 +425,7 @@ select {
 .message-container.assistant { color: #e6e1da }
 
 /* User bubble distinct style */
-.message-container.user { background: linear-gradient(180deg, rgba(201,122,75,0.16), rgba(201,122,75,0.1)); color: #f3efe7; border-color: rgba(201,122,75,0.15) }
+.message-container.user { background: linear-gradient(180deg, rgba(47,191,113,0.16), rgba(47,191,113,0.1)); color: #f3efe7; border-color: rgba(47,191,113,0.15) }
 
 /* Ensure actions are visible on small screens */
 .message-actions.always-show { opacity: 1; transform: translateY(0) }
@@ -422,3 +444,4 @@ select {
     gap: 6px;
   }
 }
+
