@@ -318,10 +318,13 @@ function cx(...classes: (string | false | undefined | null)[]) {
   return classes.filter(Boolean).join(' ')
 }
 
-async function persistThreadMessage(threadId: number, role: Role, content: string) {
+async function persistThreadMessage(threadId: number, role: Role, content: string, token: string | null) {
   const response = await fetch(`${apiBase}/threads/${threadId}/messages`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ role, content }),
   })
 
@@ -329,10 +332,13 @@ async function persistThreadMessage(threadId: number, role: Role, content: strin
   return (await response.json()) as Message
 }
 
-async function createChatThread(title = DEFAULT_THREAD_TITLE) {
+async function createChatThread(title = DEFAULT_THREAD_TITLE, token: string | null = null) {
   const response = await fetch(`${apiBase}/threads`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: JSON.stringify({ title }),
   })
 
@@ -341,7 +347,7 @@ async function createChatThread(title = DEFAULT_THREAD_TITLE) {
 }
 
 function App() {
-  const { user, logout } = useAuth()
+  const { user, token, logout } = useAuth()
   const [threads, setThreads] = useState<Thread[]>([])
   const [activeThreadId, setActiveThreadId] = useState<number | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -615,7 +621,9 @@ function App() {
   }, [user?.name])
   const activeThreadTitle = useMemo(() => activeThread.title, [activeThread.title])
   const fetchThreadMessages = async (threadId: number) => {
-    const response = await fetch(`${apiBase}/threads/${threadId}/messages`)
+    const response = await fetch(`${apiBase}/threads/${threadId}/messages`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
     if (!response.ok) throw new Error(await response.text())
     const data = (await response.json()) as { messages?: Message[] }
     return data.messages ?? []
@@ -635,7 +643,9 @@ function App() {
 
     const bootstrap = async () => {
       try {
-        const response = await fetch(`${apiBase}/threads`)
+        const response = await fetch(`${apiBase}/threads`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
         if (!response.ok) throw new Error(await response.text())
         const data = (await response.json()) as { threads?: Thread[] }
         if (cancelled) return
@@ -649,7 +659,7 @@ function App() {
           if (cancelled) return
           setMessages(firstMessages)
         } else {
-          const thread = await createChatThread('New chat')
+          const thread = await createChatThread('New chat', token)
           if (cancelled) return
 
           const welcome = {
@@ -661,7 +671,7 @@ function App() {
           setThreads([thread])
           setActiveThreadId(thread.id)
           setMessages([welcome])
-          await persistThreadMessage(thread.id, 'assistant', welcomeMessage)
+          await persistThreadMessage(thread.id, 'assistant', welcomeMessage, token)
         }
       } catch (bootError) {
         if (!cancelled) {
@@ -725,7 +735,10 @@ function App() {
   ) => {
     const response = await fetch(`${apiBase}/chat`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({
         messages: conversation.map((m) => ({ role: m.role, content: m.content })),
         attachments: currentAttachments
@@ -787,7 +800,10 @@ function App() {
   const updateThreadTitle = async (threadId: number, title: string) => {
     const response = await fetch(`${apiBase}/threads/${threadId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ title }),
     })
 
@@ -849,7 +865,7 @@ function App() {
       let threadId = activeThreadId
       let currentThreadTitle = activeThread.title
       if (!threadId) {
-        const thread = await createChatThread(DEFAULT_THREAD_TITLE)
+        const thread = await createChatThread(DEFAULT_THREAD_TITLE, token)
         skipNextThreadLoad.current = true
         setThreads((curr) => [thread, ...curr])
         setActiveThreadId(thread.id)
@@ -857,7 +873,7 @@ function App() {
         currentThreadTitle = thread.title
       }
 
-      await persistThreadMessage(threadId, 'user', messageText)
+      await persistThreadMessage(threadId, 'user', messageText, token)
 
       const nextMessages = [...messages, userMsg]
       await maybeGenerateThreadTitle(threadId, currentThreadTitle, nextMessages)
@@ -868,7 +884,7 @@ function App() {
         pushTypedChunk(placeholder.id, chunk)
       })
       finalizeTypedMessage(placeholder.id, responseText)
-      await persistThreadMessage(threadId, 'assistant', responseText)
+      await persistThreadMessage(threadId, 'assistant', responseText, token)
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong.'
       setError(msg)

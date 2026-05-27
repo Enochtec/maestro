@@ -44,6 +44,20 @@ function requireStrings(obj, ...keys) {
   return null
 }
 
+function requireAuth(req, res, next) {
+  const auth = req.headers.authorization
+  if (!auth?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authentication required' })
+  }
+  try {
+    const payload = jwt.verify(auth.slice(7), JWT_SECRET)
+    req.userId = payload.userId
+    next()
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired token' })
+  }
+}
+
 app.use(cors())
 app.use(express.json({ limit: '20mb' }))
 
@@ -217,34 +231,40 @@ app.get('/api/auth/me', async (req, res) => {
 
 // ── Thread endpoints ──────────────────────────────────────────────────────────
 
-app.get('/api/threads', async (_req, res) => {
+app.get('/api/threads', requireAuth, async (req, res) => {
   try {
-    const { rows } = await pool.query('SELECT id, title FROM threads ORDER BY updated_at DESC, id DESC')
+    const { rows } = await pool.query(
+      'SELECT id, title FROM threads WHERE user_id = $1 ORDER BY updated_at DESC, id DESC',
+      [req.userId],
+    )
     res.json({ threads: rows })
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read threads' })
   }
 })
 
-app.post('/api/threads', async (req, res) => {
+app.post('/api/threads', requireAuth, async (req, res) => {
   try {
     const title = typeof req.body?.title === 'string' && req.body.title.trim() ? req.body.title.trim() : 'New chat'
-    const { rows } = await pool.query('INSERT INTO threads (title) VALUES ($1) RETURNING id, title', [title])
+    const { rows } = await pool.query(
+      'INSERT INTO threads (user_id, title) VALUES ($1, $2) RETURNING id, title',
+      [req.userId, title],
+    )
     res.status(201).json(rows[0])
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create thread' })
   }
 })
 
-app.patch('/api/threads/:threadId', async (req, res) => {
+app.patch('/api/threads/:threadId', requireAuth, async (req, res) => {
   try {
     const threadId = Number(req.params.threadId)
     const title = typeof req.body?.title === 'string' ? req.body.title.trim() : ''
     if (!Number.isFinite(threadId)) return res.status(400).json({ error: 'Invalid thread id' })
     if (!title) return res.status(400).json({ error: 'Title is required' })
     const { rows } = await pool.query(
-      'UPDATE threads SET title = $1, updated_at = NOW() WHERE id = $2 RETURNING id, title',
-      [title, threadId],
+      'UPDATE threads SET title = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3 RETURNING id, title',
+      [title, threadId, req.userId],
     )
     if (!rows[0]) return res.status(404).json({ error: 'Thread not found' })
     res.json(rows[0])
@@ -253,10 +273,12 @@ app.patch('/api/threads/:threadId', async (req, res) => {
   }
 })
 
-app.get('/api/threads/:threadId/messages', async (req, res) => {
+app.get('/api/threads/:threadId/messages', requireAuth, async (req, res) => {
   try {
     const threadId = Number(req.params.threadId)
     if (!Number.isFinite(threadId)) return res.status(400).json({ error: 'Invalid thread id' })
+    const owns = await pool.query('SELECT id FROM threads WHERE id = $1 AND user_id = $2', [threadId, req.userId])
+    if (!owns.rows[0]) return res.status(404).json({ error: 'Thread not found' })
     const { rows } = await pool.query(
       'SELECT id, role, content, pending, created_at FROM messages WHERE thread_id = $1 ORDER BY created_at ASC, id ASC',
       [threadId],
@@ -267,7 +289,7 @@ app.get('/api/threads/:threadId/messages', async (req, res) => {
   }
 })
 
-app.post('/api/threads/:threadId/messages', async (req, res) => {
+app.post('/api/threads/:threadId/messages', requireAuth, async (req, res) => {
   try {
     const threadId = Number(req.params.threadId)
     const role = req.body?.role
@@ -276,6 +298,8 @@ app.post('/api/threads/:threadId/messages', async (req, res) => {
     if (!Number.isFinite(threadId)) return res.status(400).json({ error: 'Invalid thread id' })
     if (role !== 'user' && role !== 'assistant') return res.status(400).json({ error: 'Invalid role' })
     if (!content.trim()) return res.status(400).json({ error: 'Content is required' })
+    const owns = await pool.query('SELECT id FROM threads WHERE id = $1 AND user_id = $2', [threadId, req.userId])
+    if (!owns.rows[0]) return res.status(404).json({ error: 'Thread not found' })
     await pool.query('UPDATE threads SET updated_at = NOW() WHERE id = $1', [threadId])
     const { rows } = await pool.query(
       'INSERT INTO messages (thread_id, role, content, pending) VALUES ($1, $2, $3, $4) RETURNING id, role, content, pending, created_at',
@@ -291,7 +315,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
 // ── AI chat endpoint (DeepSeek) ─────────────────────────────────────────────
 
-app.post('/api/chat', async (req, res) => {
+app.post('/api/chat', requireAuth, async (req, res) => {
   const { messages } = req.body ?? {}
 
   const deepSeekApiKey = process.env.DEEPSEEK_API_KEY ?? process.env.VITE_DEEPSEEK_API_KEY
