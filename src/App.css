@@ -445,3 +445,23 @@ select {
   }
 }
 
+/* Heading & subtopic styles inside message bubbles */
+.message-container .prose .title {
+  font-size: 1.12rem;
+  font-weight: 700;
+  margin: 0 0 8px 0;
+}
+.message-container .prose .topic {
+  font-size: 1.06rem;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+}
+.message-container .prose .subtopic {
+  font-size: 1.02rem;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+  color: #ffffff;
+}
+.message-container .prose p { font-size: 0.98rem }
+
+

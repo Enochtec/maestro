@@ -17,10 +17,10 @@ function markdownToHtml(md: string) {
   // Tables (pipe syntax)
   out = renderTables(out)
 
-  // Headings
-  out = out.replace(/^### (.*$)/gim, '<h3>$1</h3>')
-  out = out.replace(/^## (.*$)/gim, '<h2>$1</h2>')
-  out = out.replace(/^# (.*$)/gim, '<h1>$1</h1>')
+  // Headings — mark subtopics so we can style them larger than regular content
+  out = out.replace(/^### (.*$)/gim, '<h3 class="subtopic">$1</h3>')
+  out = out.replace(/^## (.*$)/gim, '<h2 class="topic">$1</h2>')
+  out = out.replace(/^# (.*$)/gim, '<h1 class="title">$1</h1>')
 
   // Bold markers (strip the ** symbols to avoid noisy output)
   out = out.replace(/\*\*(.*?)\*\*/gim, '$1')
@@ -1371,11 +1371,47 @@ function App() {
                 type="button"
                 className="flex items-center gap-2 px-0 py-3 sidebar-text font-semibold transition-colors"
                 title="Settings"
+                aria-label="Settings"
               >
                 <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap flex-shrink-0">
                   settings
                 </span>
                 <span>Settings</span>
+              </button>
+
+              <button
+                type="button"
+                className="flex items-center gap-2 px-0 py-3 sidebar-text font-semibold transition-colors"
+                title="Install app"
+                onClick={async () => {
+                  // try to trigger saved beforeinstallprompt
+                  // @ts-ignore
+                  const prompt = (window.__deferredPrompt as any) ?? null
+                  if (prompt) {
+                    try {
+                      await prompt.prompt()
+                      await prompt.userChoice
+                      localStorage.setItem('maestro_install_shown', '1')
+                      // @ts-ignore
+                      window.__deferredPrompt = null
+                    } catch (err) {
+                      void err
+                    }
+                    return
+                  }
+
+                  // fallback: show simple instructions
+                  if (document.getElementById('install-instructions')) return
+                  const el = document.createElement('div')
+                  el.id = 'install-instructions'
+                  el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:18px;padding:10px 12px;background:#1b1b1b;color:#fff;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,0.45);z-index:10000;font-size:14px;'
+                  el.innerHTML = `<div style="display:flex;gap:12px;align-items:center;"> <div style="flex:1">To install: on Android use browser menu → Install app. On iOS use Share → Add to Home Screen.</div><button id="install-instructions-close" style="background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px 10px;border-radius:8px;color:#fff;cursor:pointer">Close</button></div>`
+                  document.body.appendChild(el)
+                  document.getElementById('install-instructions-close')?.addEventListener('click', () => el.remove())
+                }}
+              >
+                <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap flex-shrink-0">download</span>
+                <span>Install app</span>
               </button>
 
               <div className="flex items-center gap-2 px-0 py-3">
