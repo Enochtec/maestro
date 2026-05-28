@@ -1,10 +1,11 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
 import { GoogleOAuthProvider } from '@react-oauth/google'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import './index.css'
-import App from './App.tsx'
-import AuthPages from './components/auth/AuthPages'
+
+const App = lazy(() => import('./App'))
+const AuthPages = lazy(() => import('./components/auth/AuthPages'))
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
 
@@ -28,12 +29,16 @@ createRoot(document.getElementById('root')!).render(
     {googleClientId ? (
       <GoogleOAuthProvider clientId={googleClientId}>
         <AuthProvider>
-          <Root />
+          <Suspense fallback={<div />}> 
+            <Root />
+          </Suspense>
         </AuthProvider>
       </GoogleOAuthProvider>
     ) : (
       <AuthProvider>
-        <Root />
+        <Suspense fallback={<div />}>
+          <Root />
+        </Suspense>
       </AuthProvider>
     )}
   </StrictMode>,

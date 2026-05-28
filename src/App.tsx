@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { useAuth } from './contexts/AuthContext'
 // Minimal markdown -> HTML renderer for basic headings, bold, lists, inline code, and fenced code blocks.
 function markdownToHtml(md: string) {
@@ -24,6 +24,9 @@ function markdownToHtml(md: string) {
 
   // Bold markers (strip the ** symbols to avoid noisy output)
   out = out.replace(/\*\*(.*?)\*\*/gim, '$1')
+
+  // Double-underscore bold markers (non-asterisk bold style)
+  out = out.replace(/__(.*?)__/gim, '<strong>$1</strong>')
 
   // Inline code
   out = out.replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
@@ -242,7 +245,7 @@ function toTitleCase(text: string) {
 }
 
 function normalizeAiText(text: string) {
-  return text.replace(/[\u2013\u2014]/g, '-')
+  return text.replace(/[\u2013\u2014]/g, '-').replace(/\*/g, '')
 }
 
 function stripAttachmentSummary(content: string) {
@@ -641,6 +644,13 @@ function App() {
   useEffect(() => {
     let cancelled = false
 
+    const scheduleIdle = (fn: () => void) => {
+      if (typeof window === 'undefined') return fn()
+      const ric = (window as any).requestIdleCallback
+      if (typeof ric === 'function') ric(fn)
+      else setTimeout(fn, 50)
+    }
+
     const bootstrap = async () => {
       try {
         const response = await fetch(`${apiBase}/threads`, {
@@ -652,12 +662,11 @@ function App() {
 
         const loadedThreads = data.threads ?? []
         if (loadedThreads[0]?.id) {
+          // Load recent threads but do not auto-open any thread so
+          // the user always sees a fresh landing screen on app start.
           setThreads(loadedThreads)
-          setActiveThreadId((current) => current ?? loadedThreads[0].id ?? null)
-
-          const firstMessages = await fetchThreadMessages(loadedThreads[0].id)
-          if (cancelled) return
-          setMessages(firstMessages)
+          setActiveThreadId(null)
+          setMessages([])
         } else {
           const thread = await createChatThread('New chat', token)
           if (cancelled) return
@@ -682,7 +691,9 @@ function App() {
       }
     }
 
-    void bootstrap()
+    scheduleIdle(() => {
+      void bootstrap()
+    })
 
     return () => {
       cancelled = true
@@ -923,7 +934,7 @@ function App() {
     (message) => !(message.role === 'assistant' && legacyWelcomeRegex.test(message.content ?? '')),
   )
 
-  function MessageBubble({ message }: { message: Message }) {
+  const MessageBubble = memo(function MessageBubble({ message }: { message: Message }) {
     const [copied, setCopied] = useState(false)
     const [liked, setLiked] = useState(false)
     const [disliked, setDisliked] = useState(false)
@@ -1041,7 +1052,7 @@ function App() {
         </div>
       </article>
     )
-  }
+  })
 
   // composerInner should be available in the JSX below
   const composerInner = (
@@ -1258,7 +1269,10 @@ function App() {
                     key={thread.id}
                     type="button"
                     className="w-full text-left px-4 py-2.5 sidebar-text font-medium mb-1 transition-colors truncate whitespace-nowrap"
-                    onClick={() => setActiveThreadId(thread.id)}
+                    onClick={() => {
+                      setActiveThreadId(thread.id)
+                      if (isMobileViewport) setIsSidebarOpen(false)
+                    }}
                   >
                     {thread.id === activeThreadId ? activeThreadTitle : thread.title}
                   </button>

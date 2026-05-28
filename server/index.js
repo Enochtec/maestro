@@ -22,9 +22,33 @@ const requestedPort = Number(process.env.PORT ?? 8787)
 const host = process.env.HOST ?? '0.0.0.0'
 const JWT_SECRET = process.env.JWT_SECRET ?? 'maestro-dev-secret-please-change-in-production'
 const BCRYPT_ROUNDS = 10
+const TAVILY_API_KEY = process.env.TAVILY_API_KEY ?? process.env.VITE_TAVILY_API_KEY
 
 let pool
 let httpServer
+
+// Simple in-memory TTL cache to reduce DB hits for frequently-read endpoints.
+// Keyed by strings; stores { value, expiresAt }.
+const simpleCache = new Map()
+
+function setCache(key, value, ttlMs = 10000) {
+  const expiresAt = Date.now() + ttlMs
+  simpleCache.set(key, { value, expiresAt })
+}
+
+function getCache(key) {
+  const entry = simpleCache.get(key)
+  if (!entry) return null
+  if (Date.now() > entry.expiresAt) {
+    simpleCache.delete(key)
+    return null
+  }
+  return entry.value
+}
+
+function delCache(key) {
+  simpleCache.delete(key)
+}
 
 function buildPoolConfig() {
   const databaseUrl = process.env.DATABASE_URL?.trim()
@@ -55,6 +79,95 @@ function requireAuth(req, res, next) {
     next()
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' })
+  }
+}
+
+function extractLatestUserPrompt(messages) {
+  if (!Array.isArray(messages)) return ''
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const msg = messages[i]
+    if (msg?.role === 'user' && typeof msg.content === 'string' && msg.content.trim()) {
+      return msg.content.trim()
+    }
+  }
+  return ''
+}
+
+function shouldUseWebSearch(prompt) {
+  if (!prompt) return false
+  const text = prompt.toLowerCase()
+  const triggers = [
+    'latest',
+    'today',
+    'current',
+    'now',
+    'recent',
+    'news',
+    'real-time',
+    'realtime',
+    'live',
+    'web',
+    'online',
+    'search',
+    'price',
+    'stock',
+    'weather',
+    'score',
+    'update',
+  ]
+  return triggers.some((keyword) => text.includes(keyword))
+}
+
+async function tavilyWebSearch(query) {
+  if (!TAVILY_API_KEY || !query) return null
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 7000)
+
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        api_key: TAVILY_API_KEY,
+        query,
+        search_depth: 'advanced',
+        include_answer: true,
+        include_raw_content: false,
+        max_results: 5,
+      }),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      const body = await response.text()
+      throw new Error(body || `Tavily error (${response.status})`)
+    }
+
+    const data = await response.json()
+    const answer = typeof data?.answer === 'string' ? data.answer.trim() : ''
+    const results = Array.isArray(data?.results) ? data.results : []
+    const top = results.slice(0, 4)
+
+    if (!answer && !top.length) return null
+
+    const sources = top
+      .map((item, index) => {
+        const title = typeof item?.title === 'string' && item.title.trim() ? item.title.trim() : `Source ${index + 1}`
+        const url = typeof item?.url === 'string' ? item.url : ''
+        const content = typeof item?.content === 'string' ? item.content.trim() : ''
+        return `- ${title} (${url})${content ? `: ${content.slice(0, 260)}` : ''}`
+      })
+      .join('\n')
+
+    return {
+      answer,
+      sources,
+    }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -233,10 +346,15 @@ app.get('/api/auth/me', async (req, res) => {
 
 app.get('/api/threads', requireAuth, async (req, res) => {
   try {
+    const cacheKey = `threads:${req.userId}`
+    const cached = getCache(cacheKey)
+    if (cached) return res.json({ threads: cached })
+
     const { rows } = await pool.query(
       'SELECT id, title FROM threads WHERE user_id = $1 ORDER BY updated_at DESC, id DESC',
       [req.userId],
     )
+    setCache(cacheKey, rows, 15000) // cache for 15s
     res.json({ threads: rows })
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read threads' })
@@ -250,6 +368,8 @@ app.post('/api/threads', requireAuth, async (req, res) => {
       'INSERT INTO threads (user_id, title) VALUES ($1, $2) RETURNING id, title',
       [req.userId, title],
     )
+    // Invalidate cached thread list for this user
+    delCache(`threads:${req.userId}`)
     res.status(201).json(rows[0])
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to create thread' })
@@ -266,6 +386,8 @@ app.patch('/api/threads/:threadId', requireAuth, async (req, res) => {
       'UPDATE threads SET title = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3 RETURNING id, title',
       [title, threadId, req.userId],
     )
+    // Invalidate cached thread list for this user
+    delCache(`threads:${req.userId}`)
     if (!rows[0]) return res.status(404).json({ error: 'Thread not found' })
     res.json(rows[0])
   } catch (error) {
@@ -279,10 +401,15 @@ app.get('/api/threads/:threadId/messages', requireAuth, async (req, res) => {
     if (!Number.isFinite(threadId)) return res.status(400).json({ error: 'Invalid thread id' })
     const owns = await pool.query('SELECT id FROM threads WHERE id = $1 AND user_id = $2', [threadId, req.userId])
     if (!owns.rows[0]) return res.status(404).json({ error: 'Thread not found' })
+    const cacheKey = `messages:${req.userId}:${threadId}`
+    const cached = getCache(cacheKey)
+    if (cached) return res.json({ messages: cached })
+
     const { rows } = await pool.query(
       'SELECT id, role, content, pending, created_at FROM messages WHERE thread_id = $1 ORDER BY created_at ASC, id ASC',
       [threadId],
     )
+    setCache(cacheKey, rows, 20000) // cache messages for 20s
     res.json({ messages: rows })
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to read messages' })
@@ -305,6 +432,9 @@ app.post('/api/threads/:threadId/messages', requireAuth, async (req, res) => {
       'INSERT INTO messages (thread_id, role, content, pending) VALUES ($1, $2, $3, $4) RETURNING id, role, content, pending, created_at',
       [threadId, role, content, pending],
     )
+    // Invalidate caches for this thread and user's thread list
+    delCache(`messages:${req.userId}:${threadId}`)
+    delCache(`threads:${req.userId}`)
     res.status(201).json(rows[0])
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to save message' })
@@ -332,9 +462,38 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
   const systemText =
     'You are Maestro, a concise, polished AI assistant. Be helpful, direct, and practical. ' +
-    'If asked who built you (or similar questions), reply that you were built by a student from the University of Eldoret named Enock Juma.'
+    'If asked who built you (or similar questions), reply that you were built by a student from the University of Eldoret named Enock Juma. ' +
+    'Formatting rules: never use the asterisk character. Do not output markdown bullets with *. Use numbered lists or hyphen bullets. ' +
+    'For main topics and subtopics, format with markdown headings (#, ##, ###) and optionally __double-underscore bold__ labels.'
 
   try {
+    const latestPrompt = extractLatestUserPrompt(messages)
+    let liveWebContext = ''
+
+    if (shouldUseWebSearch(latestPrompt)) {
+      try {
+        const webResult = await tavilyWebSearch(latestPrompt)
+        if (webResult) {
+          const parts = []
+          if (webResult.answer) parts.push(`Tavily summary: ${webResult.answer}`)
+          if (webResult.sources) parts.push(`Web sources:\n${webResult.sources}`)
+          if (parts.length) liveWebContext = parts.join('\n\n')
+        }
+      } catch (webErr) {
+        console.warn('[Maestro] Tavily search failed:', webErr instanceof Error ? webErr.message : webErr)
+      }
+    }
+
+    const systemMessages = [{ role: 'system', content: systemText }]
+    if (liveWebContext) {
+      systemMessages.push({
+        role: 'system',
+        content:
+          'Use this live web context as optional reference for freshness. If unsure, say so and avoid overclaiming.\n\n' +
+          liveWebContext,
+      })
+    }
+
     const deepSeekRes = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST',
       headers: {
@@ -344,10 +503,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
       body: JSON.stringify({
         model: deepSeekModel,
         stream: true,
-        messages: [
-          { role: 'system', content: systemText },
-          ...messages.map((m) => ({ role: m.role, content: m.content })),
-        ],
+        messages: [...systemMessages, ...messages.map((m) => ({ role: m.role, content: m.content }))],
         temperature: 0.7,
       }),
     })
@@ -360,7 +516,7 @@ app.post('/api/chat', requireAuth, async (req, res) => {
     if (!deepSeekRes.body) {
       const body = await deepSeekRes.text()
       const data = JSON.parse(body)
-      const text = data?.choices?.[0]?.message?.content?.trim()
+      const text = data?.choices?.[0]?.message?.content?.trim()?.replace(/\*/g, '')
       if (!text) return res.status(500).json({ error: 'DeepSeek returned an empty response' })
       return res.json({ text })
     }
@@ -389,7 +545,8 @@ app.post('/api/chat', requireAuth, async (req, res) => {
 
         try {
           const parsed = JSON.parse(dataLine)
-          const delta = parsed?.choices?.[0]?.delta?.content ?? parsed?.choices?.[0]?.message?.content ?? ''
+          const rawDelta = parsed?.choices?.[0]?.delta?.content ?? parsed?.choices?.[0]?.message?.content ?? ''
+          const delta = typeof rawDelta === 'string' ? rawDelta.replace(/\*/g, '') : ''
           if (!delta) continue
           res.write(`data: ${JSON.stringify({ text: delta })}\n\n`)
         } catch {
