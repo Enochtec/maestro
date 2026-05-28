@@ -61,7 +61,7 @@ export default function ForgotPassword({ onNavigateLogin }: Props) {
                 className="w-14 h-14 rounded-2xl flex items-center justify-center"
                 style={{ background: 'rgba(47,191,113,0.15)', border: '1px solid rgba(47,191,113,0.25)' }}
               >
-                <span className="material-symbols-outlined text-[#2fbf71]" style={{ fontSize: 28 }}>
+                <span className="material-symbols-outlined text-[#2fbf71]" style={{ fontSize: 30 }}>
                   mark_email_read
                 </span>
               </div>

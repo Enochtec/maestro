@@ -82,6 +82,148 @@ function requireAuth(req, res, next) {
   }
 }
 
+function normalizePrompt(text) {
+  return text.replace(/\s+/g, ' ').trim()
+}
+
+function normalizeKnowledgeKey(text) {
+  return normalizePrompt(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function getKnowledgeTokens(text) {
+  const stopWords = new Set([
+    'a',
+    'an',
+    'and',
+    'are',
+    'as',
+    'at',
+    'be',
+    'by',
+    'can',
+    'do',
+    'for',
+    'from',
+    'how',
+    'i',
+    'in',
+    'is',
+    'it',
+    'me',
+    'of',
+    'on',
+    'or',
+    'show',
+    'tell',
+    'the',
+    'to',
+    'what',
+    'when',
+    'where',
+    'which',
+    'with',
+    'why',
+    'would',
+    'you',
+    'help',
+    'issue',
+    'problem',
+    'question',
+    'support',
+    'request',
+    'please',
+    'want',
+    'need',
+    'latest',
+    'current',
+    'today',
+    'now',
+    'recent',
+  ])
+
+  return normalizeKnowledgeKey(text)
+    .split(' ')
+    .filter((word) => word.length > 2 && !stopWords.has(word))
+}
+
+function shouldStoreKnowledge(prompt, answer) {
+  const text = `${prompt}\n${answer}`
+  if (!prompt || !answer) return false
+  if (prompt.length < 18) return false
+  if (answer.length < 80) return false
+  if (/(api[_-]?key|password|secret|token|bearer|private key|ssh|credit card|ssn)/i.test(text)) return false
+  return true
+}
+
+function summarizeKnowledge(prompt, answer) {
+  const cleanedPrompt = normalizePrompt(prompt).slice(0, 120)
+  const cleanedAnswer = normalizePrompt(answer).slice(0, 900)
+  return `Q: ${cleanedPrompt}\nA: ${cleanedAnswer}`.trim()
+}
+
+async function storeSharedKnowledge(threadId, sourceMessageId, prompt, answer) {
+  if (!shouldStoreKnowledge(prompt, answer)) return
+
+  const promptKey = normalizeKnowledgeKey(prompt)
+  if (!promptKey) return
+
+  await pool.query(
+    `
+      INSERT INTO shared_knowledge (
+        prompt_key,
+        prompt,
+        summary,
+        answer,
+        source_thread_id,
+        source_message_id,
+        updated_at
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, NOW())
+      ON CONFLICT (prompt_key)
+      DO UPDATE SET
+        prompt = EXCLUDED.prompt,
+        summary = EXCLUDED.summary,
+        answer = EXCLUDED.answer,
+        source_thread_id = EXCLUDED.source_thread_id,
+        source_message_id = EXCLUDED.source_message_id,
+        updated_at = NOW()
+    `,
+    [promptKey, prompt, summarizeKnowledge(prompt, answer), answer.slice(0, 2500), threadId, sourceMessageId],
+  )
+}
+
+async function findRelevantKnowledge(prompt) {
+  const queryTokens = getKnowledgeTokens(prompt)
+  if (!queryTokens.length) return []
+
+  const { rows } = await pool.query(
+    'SELECT id, prompt, summary, answer, updated_at FROM shared_knowledge ORDER BY updated_at DESC, id DESC LIMIT 200',
+  )
+
+  return rows
+    .map((row) => {
+      const haystack = `${row.prompt} ${row.summary} ${row.answer}`.toLowerCase()
+      const rowTokens = new Set(getKnowledgeTokens(haystack))
+      let score = 0
+
+      for (const token of queryTokens) {
+        if (haystack.includes(token)) score += 2
+        if (rowTokens.has(token)) score += 1
+      }
+
+      if (normalizeKnowledgeKey(row.prompt) === normalizeKnowledgeKey(prompt)) score += 8
+
+      return { ...row, score }
+    })
+    .filter((row) => row.score >= 4)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+}
+
 function extractLatestUserPrompt(messages) {
   if (!Array.isArray(messages)) return ''
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -432,6 +574,16 @@ app.post('/api/threads/:threadId/messages', requireAuth, async (req, res) => {
       'INSERT INTO messages (thread_id, role, content, pending) VALUES ($1, $2, $3, $4) RETURNING id, role, content, pending, created_at',
       [threadId, role, content, pending],
     )
+
+    if (role === 'assistant') {
+      const previousUser = await pool.query(
+        'SELECT content FROM messages WHERE thread_id = $1 AND role = $2 ORDER BY created_at DESC, id DESC LIMIT 1 OFFSET 0',
+        [threadId, 'user'],
+      )
+      const userPrompt = previousUser.rows[0]?.content ?? ''
+      await storeSharedKnowledge(threadId, rows[0].id, userPrompt, content)
+    }
+
     // Invalidate caches for this thread and user's thread list
     delCache(`messages:${req.userId}:${threadId}`)
     delCache(`threads:${req.userId}`)
@@ -469,6 +621,18 @@ app.post('/api/chat', requireAuth, async (req, res) => {
   try {
     const latestPrompt = extractLatestUserPrompt(messages)
     let liveWebContext = ''
+    let sharedMemoryContext = ''
+
+    try {
+      const memories = await findRelevantKnowledge(latestPrompt)
+      if (memories.length) {
+        sharedMemoryContext = memories
+          .map((item, index) => `Memory ${index + 1}:\n${item.summary}`)
+          .join('\n\n')
+      }
+    } catch (memoryErr) {
+      console.warn('[Maestro] Shared memory lookup failed:', memoryErr instanceof Error ? memoryErr.message : memoryErr)
+    }
 
     if (shouldUseWebSearch(latestPrompt)) {
       try {
@@ -491,6 +655,15 @@ app.post('/api/chat', requireAuth, async (req, res) => {
         content:
           'Use this live web context as optional reference for freshness. If unsure, say so and avoid overclaiming.\n\n' +
           liveWebContext,
+      })
+    }
+
+    if (sharedMemoryContext) {
+      systemMessages.push({
+        role: 'system',
+        content:
+          'Use this shared memory from prior chats as a reusable research base. If the same topic appears again, improve or update the answer instead of repeating it verbatim. Do not mention internal memory.\n\n' +
+          sharedMemoryContext,
       })
     }
 

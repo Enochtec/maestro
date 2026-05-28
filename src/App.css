@@ -5,7 +5,7 @@
   font-family: 'Material Symbols Outlined';
   font-weight: normal;
   font-style: normal;
-  font-size: 22px;
+  font-size: 24px;
   line-height: 1;
   letter-spacing: normal;
   text-transform: none;
@@ -18,7 +18,7 @@
 }
 
 :root {
-  font-size: 15px;
+  font-size: 17px;
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
@@ -31,13 +31,13 @@ select {
 }
 
 .sidebar-text {
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.15;
   color: #ffffff;
 }
 
 .sidebar-icon {
-  font-size: 14px;
+  font-size: 16px;
   color: #ffffff;
 }
 
@@ -110,7 +110,7 @@ select {
   flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px 4px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .composer-attachment {
@@ -139,7 +139,7 @@ select {
   outline: none;
   background: transparent;
   color: #f3efe7;
-  font-size: 12.5px;
+  font-size: 14.5px;
   line-height: 1.4;
   padding: 6px 2px;
   min-height: 28px;
@@ -230,7 +230,7 @@ select {
   }
 
   .composer-input {
-    font-size: 12px;
+    font-size: 14px;
   }
 
   .composer-btn {
@@ -373,9 +373,9 @@ select {
   transform: translateY(0);
 }
 
-.message-code-block { background: #0f1113; border-radius: 14px; padding: 12px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace; font-size: 0.92rem; border: 1px solid rgba(255,255,255,0.04) }
+.message-code-block { background: #0f1113; border-radius: 14px; padding: 12px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', monospace; font-size: 1.05rem; border: 1px solid rgba(255,255,255,0.04) }
 .message-code-block code { white-space: pre; display: block }
-.inline-code { background: rgba(255,255,255,0.02); padding: 2px 6px; border-radius: 6px; font-family: ui-monospace, monospace; font-size: .92em }
+.inline-code { background: rgba(255,255,255,0.02); padding: 2px 6px; border-radius: 6px; font-family: ui-monospace, monospace; font-size: 1.05em }
 
 .message-container .prose p { margin: 0 0 10px 0 }
 

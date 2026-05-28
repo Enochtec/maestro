@@ -154,7 +154,7 @@ export default function Login({ onNavigateSignup, onNavigateForgot }: Props) {
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[#6b6560] hover:text-[#a9a39c] transition-colors"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
                     {showPassword ? 'visibility_off' : 'visibility'}
                   </span>
                 </button>

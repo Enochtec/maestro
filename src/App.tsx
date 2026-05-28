@@ -78,6 +78,13 @@ function buildTableHtml(headerCells: string[], alignments: Array<'left' | 'right
   return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
 }
 
+function buildTableCopyText(headerCells: string[], rows: string[][]) {
+  const header = `| ${headerCells.join(' | ')} |`
+  const separator = `| ${headerCells.map(() => '---').join(' | ')} |`
+  const body = rows.map((row) => `| ${row.join(' | ')} |`)
+  return [header, separator, ...body].join('\n')
+}
+
 function renderTables(md: string) {
   const lines = md.split('\n')
   const rendered: string[] = []
@@ -116,6 +123,72 @@ function renderTables(md: string) {
   }
 
   return rendered.join('\n')
+}
+
+function markdownToCopyText(md: string) {
+  if (!md) return ''
+  const lines = md.split('\n')
+  const output: string[] = []
+  let i = 0
+  let inCodeBlock = false
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    if (line.startsWith('```')) {
+      inCodeBlock = !inCodeBlock
+      output.push(line)
+      i += 1
+      continue
+    }
+
+    if (inCodeBlock) {
+      output.push(line)
+      i += 1
+      continue
+    }
+
+    const headerCells = splitTableRow(line)
+    const alignment = i + 1 < lines.length ? parseTableAlignment(lines[i + 1]) : null
+
+    if (headerCells.length && alignment) {
+      const rows: string[][] = []
+      i += 2
+      while (i < lines.length) {
+        const rowCells = splitTableRow(lines[i])
+        if (!rowCells.length) break
+        rows.push(rowCells)
+        i += 1
+      }
+      output.push(buildTableCopyText(headerCells, rows))
+      continue
+    }
+
+    output.push(line)
+    i += 1
+  }
+
+  return output.join('\n').replace(/\*/g, '')
+}
+
+function markdownToCopyPayload(md: string) {
+  const html = markdownToHtml(md)
+  return {
+    text: markdownToCopyText(md),
+    html: `
+      <div style="background:#ffffff;color:#000000;font-family:Arial,sans-serif;line-height:1.5;padding:8px;">
+        <style>
+          table { border-collapse: collapse; width: 100%; color: #000000; }
+          th, td { border: 1px solid #000000; padding: 6px 8px; vertical-align: top; }
+          th { background: #f2f2f2; font-weight: 700; }
+          pre, code { color: #000000; background: #f6f6f6; }
+          h1, h2, h3, h4, h5, h6, p, li, strong, em, span, div { color: #000000; }
+          a { color: #000000; text-decoration: underline; }
+        </style>
+        ${html}
+      </div>
+    `,
+  }
 }
 import './App.css'
 
@@ -959,7 +1032,7 @@ function App() {
       <article className={cx('message-row', message.role === 'user' ? 'user' : 'assistant')}>
         {message.pending ? (
           <div className="avatar" aria-hidden>
-            <span className="material-symbols-rounded" style={{ fontSize: 14 }}>smart_toy</span>
+            <span className="material-symbols-rounded" style={{ fontSize: 16 }}>smart_toy</span>
           </div>
         ) : null}
 
@@ -985,7 +1058,7 @@ function App() {
                 <code>{codeText}</code>
               </pre>
               <button className="code-copy-btn" onClick={copyCode} aria-label="Copy code">
-                <span className="material-symbols-outlined" style={{ fontSize: 12 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 14 }}>
                   content_copy
                 </span>
               </button>
@@ -1007,7 +1080,17 @@ function App() {
                 title="Copy message"
                 onClick={async () => {
                   try {
-                    await navigator.clipboard.writeText(message.content)
+                    const payload = markdownToCopyPayload(message.content)
+                    if (navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
+                      await navigator.clipboard.write([
+                        new ClipboardItem({
+                          'text/plain': new Blob([payload.text], { type: 'text/plain' }),
+                          'text/html': new Blob([payload.html], { type: 'text/html' }),
+                        }),
+                      ])
+                    } else {
+                      await navigator.clipboard.writeText(payload.text)
+                    }
                     setCopied(true)
                     showToast('Copied to clipboard')
                     setTimeout(() => setCopied(false), 1400)
@@ -1016,19 +1099,19 @@ function App() {
                   }
                 }}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 13 }}>content_copy</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>content_copy</span>
               </button>
 
               <button className={cx('action-btn', liked && 'bg-[#2fbf71]/20')} title="Like" onClick={() => setLiked((s) => !s)}>
-                <span className="material-symbols-outlined" style={{ fontSize: 13 }}>thumb_up</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>thumb_up</span>
               </button>
 
               <button className={cx('action-btn', disliked && 'bg-white/[0.03]')} title="Dislike" onClick={() => setDisliked((s) => !s)}>
-                <span className="material-symbols-outlined" style={{ fontSize: 13 }}>thumb_down</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>thumb_down</span>
               </button>
 
               <button className="action-btn" title="Regenerate" onClick={() => { /* noop: wire to regen */ }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 13 }}>refresh</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>refresh</span>
               </button>
 
               <button
@@ -1044,7 +1127,7 @@ function App() {
                   }
                 }}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 13 }}>volume_up</span>
+                <span className="material-symbols-outlined" style={{ fontSize: 15 }}>volume_up</span>
               </button>
             </div>
           )}
@@ -1097,7 +1180,7 @@ function App() {
                   aria-label={`Remove ${att.name}`}
                   onClick={() => removeAttachment(att.id)}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 14 }}>close</span>
+                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
                 </button>
               </span>
             ))}
@@ -1113,7 +1196,7 @@ function App() {
           >
             <span
               className="material-symbols-outlined"
-              style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+              style={{ fontSize: 20, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
             >
               add
             </span>
@@ -1142,7 +1225,7 @@ function App() {
             >
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+                style={{ fontSize: 20, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
               >
                 mic
               </span>
@@ -1156,7 +1239,7 @@ function App() {
             >
               <span
                 className="material-symbols-outlined"
-                style={{ fontSize: 18, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
+                style={{ fontSize: 20, fontVariationSettings: "'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24" }}
               >
                 {isSending ? 'hourglass_top' : 'send'}
               </span>
@@ -1344,7 +1427,7 @@ function App() {
                 title={item.label}
                 aria-label={item.label}
               >
-                <span className="material-symbols-rounded" style={{ fontSize: 16 }}>
+                <span className="material-symbols-rounded" style={{ fontSize: 18 }}>
                   {item.icon}
                 </span>
               </button>
@@ -1356,7 +1439,7 @@ function App() {
               aria-label="Search"
               onClick={() => setIsSidebarOpen(true)}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16 }}>search</span>
+              <span className="material-symbols-rounded" style={{ fontSize: 18 }}>search</span>
             </button>
             <button
               type="button"
@@ -1365,7 +1448,7 @@ function App() {
               aria-label="Recents"
               onClick={() => setIsSidebarOpen(true)}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16 }}>history</span>
+              <span className="material-symbols-rounded" style={{ fontSize: 18 }}>history</span>
             </button>
             <button
               type="button"
@@ -1374,7 +1457,7 @@ function App() {
               aria-label="Settings"
               onClick={() => setIsSidebarOpen(true)}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16 }}>settings</span>
+              <span className="material-symbols-rounded" style={{ fontSize: 18 }}>settings</span>
             </button>
             <button
               type="button"
@@ -1383,7 +1466,7 @@ function App() {
               aria-label="Profile"
               onClick={() => setIsSidebarOpen(true)}
             >
-              <span className="material-symbols-rounded" style={{ fontSize: 16 }}>account_circle</span>
+              <span className="material-symbols-rounded" style={{ fontSize: 18 }}>account_circle</span>
             </button>
           </div>
         )}
@@ -1487,7 +1570,7 @@ function App() {
           className="toast-enter fixed top-5 left-1/2 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl border border-white/[0.08] shadow-2xl pointer-events-none"
           style={{ background: 'rgba(18,19,24,0.96)' }}
         >
-          <span className="material-symbols-outlined text-[#2fbf71]" style={{ fontSize: 14 }}>check_circle</span>
+          <span className="material-symbols-outlined text-[#2fbf71]" style={{ fontSize: 16 }}>check_circle</span>
           <span className="text-xs font-medium text-[#f3efe7]">{toast}</span>
         </div>
       )}

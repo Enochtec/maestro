@@ -30,3 +30,18 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS messages_thread_created_at_idx
   ON messages (thread_id, created_at, id);
+
+CREATE TABLE IF NOT EXISTS shared_knowledge (
+  id SERIAL PRIMARY KEY,
+  prompt_key TEXT NOT NULL UNIQUE,
+  prompt TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  source_thread_id INTEGER REFERENCES threads(id) ON DELETE SET NULL,
+  source_message_id INTEGER REFERENCES messages(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS shared_knowledge_updated_at_idx
+  ON shared_knowledge (updated_at DESC, id DESC);
