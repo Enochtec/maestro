@@ -131,19 +131,10 @@ window.addEventListener('beforeinstallprompt', (e: any) => {
         })
 
         document.getElementById('sw-install-btn')?.addEventListener('click', async () => {
-          // @ts-ignore
-          const prompt = window.__deferredPrompt
-          if (!prompt) return
-          try {
-            await prompt.prompt()
-            await prompt.userChoice
-            localStorage.setItem('maestro_install_shown', '1')
+          const installed = await window.triggerMaestroInstallPrompt?.()
+          if (installed) {
             el.remove()
-            // clear saved prompt
-            // @ts-ignore
-            window.__deferredPrompt = null
-          } catch (err) {
-            void err
+            localStorage.setItem('maestro_install_shown', '1')
           }
         })
       }
@@ -152,4 +143,21 @@ window.addEventListener('beforeinstallprompt', (e: any) => {
     void err
   }
 })
+
+window.triggerMaestroInstallPrompt = async () => {
+  // @ts-ignore
+  const prompt = window.__deferredPrompt
+  if (!prompt) return false
+  try {
+    await prompt.prompt()
+    await prompt.userChoice
+    localStorage.setItem('maestro_install_shown', '1')
+    // @ts-ignore
+    window.__deferredPrompt = null
+    return true
+  } catch (err) {
+    void err
+    return false
+  }
+}
 

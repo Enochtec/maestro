@@ -1384,30 +1384,15 @@ function App() {
                 className="flex items-center gap-2 px-0 py-3 sidebar-text font-semibold transition-colors"
                 title="Install app"
                 onClick={async () => {
-                  // try to trigger saved beforeinstallprompt
-                  // @ts-ignore
-                  const prompt = (window.__deferredPrompt as any) ?? null
-                  if (prompt) {
-                    try {
-                      await prompt.prompt()
-                      await prompt.userChoice
-                      localStorage.setItem('maestro_install_shown', '1')
-                      // @ts-ignore
-                      window.__deferredPrompt = null
-                    } catch (err) {
-                      void err
-                    }
-                    return
+                  const installed = await window.triggerMaestroInstallPrompt?.()
+                  if (!installed && !document.getElementById('install-unavailable-toast')) {
+                    const el = document.createElement('div')
+                    el.id = 'install-unavailable-toast'
+                    el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:18px;padding:8px 10px;background:#1b1b1b;color:#fff;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.45);z-index:10000;font-size:13px;'
+                    el.innerHTML = '<div style="display:flex;gap:10px;align-items:center;"><div style="flex:1">Install is not available in this browser right now.</div><button id="install-unavailable-close" style="background:transparent;border:1px solid rgba(255,255,255,0.06);padding:5px 8px;border-radius:8px;color:#fff;cursor:pointer;font-size:12px">Close</button></div>'
+                    document.body.appendChild(el)
+                    document.getElementById('install-unavailable-close')?.addEventListener('click', () => el.remove())
                   }
-
-                  // fallback: show simple instructions
-                  if (document.getElementById('install-instructions')) return
-                  const el = document.createElement('div')
-                  el.id = 'install-instructions'
-                  el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:18px;padding:10px 12px;background:#1b1b1b;color:#fff;border-radius:12px;box-shadow:0 8px 20px rgba(0,0,0,0.45);z-index:10000;font-size:14px;'
-                  el.innerHTML = `<div style="display:flex;gap:12px;align-items:center;"> <div style="flex:1">To install: on Android use browser menu → Install app. On iOS use Share → Add to Home Screen.</div><button id="install-instructions-close" style="background:transparent;border:1px solid rgba(255,255,255,0.06);padding:6px 10px;border-radius:8px;color:#fff;cursor:pointer">Close</button></div>`
-                  document.body.appendChild(el)
-                  document.getElementById('install-instructions-close')?.addEventListener('click', () => el.remove())
                 }}
               >
                 <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap flex-shrink-0">download</span>
@@ -1574,7 +1559,7 @@ function App() {
           {isWelcomeOnly && (
             <div className="flex-1 min-h-0 flex items-center justify-center px-4 text-center">
               <div className="w-full max-w-[52rem] px-2 py-2 bg-transparent mb-2">
-                <h2 className="mx-auto text-center text-sm sm:text-sm md:text-base font-medium leading-snug text-[#f7f2ea] break-words mb-6">
+                <h2 className="mx-auto text-center text-base sm:text-base md:text-lg font-medium leading-snug text-[#f7f2ea] break-words mb-6">
                   {welcomeLine}
                 </h2>
                 {composerInner}
