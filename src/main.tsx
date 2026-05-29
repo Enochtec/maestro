@@ -154,6 +154,71 @@ window.addEventListener('beforeinstallprompt', (e: any) => {
   }
 })
 
+// --- Installability debug helpers ---------------------------------------
+async function fetchManifest() {
+  try {
+    const res = await fetch('/manifest.webmanifest', { cache: 'no-store' })
+    if (!res.ok) return { ok: false, status: res.status }
+    const json = await res.json()
+    return { ok: true, json }
+  } catch (err) {
+    return { ok: false, error: String(err) }
+  }
+}
+
+async function renderInstallDebug() {
+  try {
+    const containerId = 'maestro-install-debug'
+    let el = document.getElementById(containerId)
+    if (!el) {
+      el = document.createElement('div')
+      el.id = containerId
+      el.style.cssText = 'position:fixed;left:12px;bottom:80px;padding:8px 10px;background:rgba(0,0,0,0.7);color:#fff;border-radius:8px;z-index:10000;font-size:12px;max-width:320px;'
+      document.body.appendChild(el)
+    }
+
+    const manifest = await fetchManifest()
+    const swSupported = 'serviceWorker' in navigator
+    const swController = !!(navigator.serviceWorker && navigator.serviceWorker.controller)
+    const deferred = Boolean((window as any).__deferredPrompt)
+
+    el.innerHTML = `
+      <div style="font-weight:700;margin-bottom:6px">Installability Debug</div>
+      <div>Service worker: ${swSupported ? 'supported' : 'not supported'}</div>
+      <div>SW controlling page: ${swController}</div>
+      <div>Deferred prompt captured: ${deferred}</div>
+      <div style="margin-top:6px;font-weight:600">Manifest</div>
+      <pre style="white-space:pre-wrap;max-height:160px;overflow:auto;margin:6px 0;padding:6px;background:rgba(255,255,255,0.02);border-radius:6px">${manifest.ok ? JSON.stringify(manifest.json, null, 2) : 'failed: ' + (manifest.status ?? manifest.error)}</pre>
+      <div style="margin-top:6px;font-size:11px;opacity:0.9">Reload the page after granting the install banner on the device to update these values.</div>
+      <div style="margin-top:8px"><button id="maestro-debug-install" style="background:#2fbf71;border:none;padding:6px 8px;border-radius:6px;color:#000;font-weight:700;cursor:pointer">Trigger install prompt (debug)</button></div>
+    `
+    // attach click handler for debug button
+    const btn = document.getElementById('maestro-debug-install')
+    if (btn) {
+      btn.addEventListener('click', async () => {
+        const res = await window.requestMaestroInstallPrompt?.()
+        if (!res) window.alert('Install was not accepted or not available')
+      })
+    }
+  } catch (err) {
+    console.error('install debug render failed', err)
+  }
+}
+
+// initial render
+renderInstallDebug()
+
+// refresh on SW controllerchange or when the deferred prompt becomes available
+navigator.serviceWorker?.addEventListener?.('controllerchange', () => renderInstallDebug())
+window.addEventListener('beforeinstallprompt', () => {
+  console.log('[Maestro] beforeinstallprompt fired; deferred prompt saved')
+  renderInstallDebug()
+})
+window.addEventListener('appinstalled', () => {
+  console.log('[Maestro] appinstalled event - app was installed')
+  renderInstallDebug()
+})
+
 window.addEventListener('appinstalled', () => {
   localStorage.setItem('maestro_install_shown', '1')
   // @ts-ignore
@@ -167,6 +232,20 @@ window.requestMaestroInstallPrompt = async () => {
   try {
     prompt.prompt()
     const choice = await prompt.userChoice
+    // show a brief on-page toast with the result so users see what happened
+    try {
+      let toast = document.getElementById('maestro-install-result')
+      if (!toast) {
+        toast = document.createElement('div')
+        toast.id = 'maestro-install-result'
+        toast.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:24px;padding:8px 12px;background:#111;color:#fff;border-radius:8px;z-index:10001;font-weight:600'
+        document.body.appendChild(toast)
+      }
+      toast.textContent = `Install ${choice.outcome}`
+      setTimeout(() => toast?.remove(), 4000)
+    } catch {
+      // ignore DOM errors
+    }
     localStorage.setItem('maestro_install_shown', '1')
     // @ts-ignore
     window.__deferredPrompt = null
