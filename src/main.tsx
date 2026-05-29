@@ -101,6 +101,12 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+let resolveInstallPromptReady: (() => void) | null = null
+window.__installPromptReadyPromise = new Promise<void>((resolve) => {
+  resolveInstallPromptReady = resolve
+})
+window.__installPromptReadyResolve = resolveInstallPromptReady
+
 // Capture beforeinstallprompt so we can trigger the install prompt later from settings
 window.addEventListener('beforeinstallprompt', (e: any) => {
   // Prevent the mini-infobar from appearing on mobile
@@ -108,6 +114,8 @@ window.addEventListener('beforeinstallprompt', (e: any) => {
   // Store the event for later use
   // @ts-ignore
   window.__deferredPrompt = e
+  window.__installPromptReadyResolve?.()
+  window.__installPromptReadyResolve = null
 
   try {
     const shown = localStorage.getItem('maestro_install_shown')
@@ -131,10 +139,12 @@ window.addEventListener('beforeinstallprompt', (e: any) => {
         })
 
         document.getElementById('sw-install-btn')?.addEventListener('click', async () => {
-          const installed = await window.triggerMaestroInstallPrompt?.()
+          const installed = await window.requestMaestroInstallPrompt?.()
           if (installed) {
             el.remove()
             localStorage.setItem('maestro_install_shown', '1')
+          } else {
+            window.alert('Install is not available in this browser right now.')
           }
         })
       }
@@ -144,20 +154,47 @@ window.addEventListener('beforeinstallprompt', (e: any) => {
   }
 })
 
-window.triggerMaestroInstallPrompt = async () => {
+window.addEventListener('appinstalled', () => {
+  localStorage.setItem('maestro_install_shown', '1')
+  // @ts-ignore
+  window.__deferredPrompt = null
+})
+
+async function waitForInstallPrompt(timeoutMs = 3000) {
+  // @ts-ignore
+  if (window.__deferredPrompt) return true
+
+  const readyPromise = window.__installPromptReadyPromise
+  if (!readyPromise) return false
+
+  await Promise.race([
+    readyPromise,
+    new Promise((resolve) => window.setTimeout(resolve, timeoutMs)),
+  ])
+
+  // @ts-ignore
+  return Boolean(window.__deferredPrompt)
+}
+
+window.requestMaestroInstallPrompt = async () => {
+  const ready = await waitForInstallPrompt()
+  if (!ready) return false
+
   // @ts-ignore
   const prompt = window.__deferredPrompt
   if (!prompt) return false
   try {
     await prompt.prompt()
-    await prompt.userChoice
+    const choice = await prompt.userChoice
     localStorage.setItem('maestro_install_shown', '1')
     // @ts-ignore
     window.__deferredPrompt = null
-    return true
+    return choice.outcome === 'accepted'
   } catch (err) {
     void err
     return false
   }
 }
+
+window.triggerMaestroInstallPrompt = window.requestMaestroInstallPrompt
 

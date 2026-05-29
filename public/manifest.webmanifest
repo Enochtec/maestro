@@ -1,6 +1,8 @@
 {
   "name": "Maestro AI Assistant",
+  "id": "/",
   "short_name": "Maestro",
+  "scope": "/",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#08090d",

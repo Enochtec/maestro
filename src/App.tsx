@@ -1384,14 +1384,9 @@ function App() {
                 className="flex items-center gap-2 px-0 py-3 sidebar-text font-semibold transition-colors"
                 title="Install app"
                 onClick={async () => {
-                  const installed = await window.triggerMaestroInstallPrompt?.()
-                  if (!installed && !document.getElementById('install-unavailable-toast')) {
-                    const el = document.createElement('div')
-                    el.id = 'install-unavailable-toast'
-                    el.style.cssText = 'position:fixed;left:12px;right:12px;bottom:18px;padding:8px 10px;background:#1b1b1b;color:#fff;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.45);z-index:10000;font-size:13px;'
-                    el.innerHTML = '<div style="display:flex;gap:10px;align-items:center;"><div style="flex:1">Install is not available in this browser right now.</div><button id="install-unavailable-close" style="background:transparent;border:1px solid rgba(255,255,255,0.06);padding:5px 8px;border-radius:8px;color:#fff;cursor:pointer;font-size:12px">Close</button></div>'
-                    document.body.appendChild(el)
-                    document.getElementById('install-unavailable-close')?.addEventListener('click', () => el.remove())
+                  const installed = await window.requestMaestroInstallPrompt?.()
+                  if (!installed) {
+                    window.alert('Install is not available in this browser right now.')
                   }
                 }}
               >
