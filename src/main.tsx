@@ -228,11 +228,38 @@ window.addEventListener('appinstalled', () => {
 window.requestMaestroInstallPrompt = async () => {
   // @ts-ignore
   const prompt = window.__deferredPrompt
-  if (!prompt) return false
+  const traceId = 'maestro-install-trace'
+  function appendTrace(msg: string) {
+    try {
+      console.log('[Maestro install trace]', msg)
+      let t = document.getElementById(traceId)
+      if (!t) {
+        t = document.createElement('div')
+        t.id = traceId
+        t.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:80px;padding:8px 12px;background:rgba(0,0,0,0.85);color:#fff;border-radius:8px;z-index:10002;font-size:13px;max-width:90%;text-align:center;'
+        document.body.appendChild(t)
+      }
+      const now = new Date().toISOString().slice(11,23)
+      t.textContent = `${now} — ${msg}`
+      // keep visible briefly
+      setTimeout(() => { try { t.remove() } catch {} }, 8000)
+    } catch {
+      void 0
+    }
+  }
+
+  appendTrace('request called')
+  if (!prompt) {
+    appendTrace('no deferred prompt available')
+    return false
+  }
   try {
+    appendTrace('calling prompt() now')
+    // call prompt synchronously within the user gesture
     prompt.prompt()
+    appendTrace('prompt() invoked — awaiting userChoice')
     const choice = await prompt.userChoice
-    // show a brief on-page toast with the result so users see what happened
+    appendTrace(`userChoice: ${choice.outcome}`)
     try {
       let toast = document.getElementById('maestro-install-result')
       if (!toast) {
@@ -244,14 +271,14 @@ window.requestMaestroInstallPrompt = async () => {
       toast.textContent = `Install ${choice.outcome}`
       setTimeout(() => toast?.remove(), 4000)
     } catch {
-      // ignore DOM errors
+      void 0
     }
     localStorage.setItem('maestro_install_shown', '1')
     // @ts-ignore
     window.__deferredPrompt = null
     return choice.outcome === 'accepted'
-  } catch (err) {
-    void err
+  } catch (err: any) {
+    appendTrace('prompt threw: ' + (err?.message ?? String(err)))
     return false
   }
 }
