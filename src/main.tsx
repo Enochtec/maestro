@@ -160,31 +160,12 @@ window.addEventListener('appinstalled', () => {
   window.__deferredPrompt = null
 })
 
-async function waitForInstallPrompt(timeoutMs = 3000) {
-  // @ts-ignore
-  if (window.__deferredPrompt) return true
-
-  const readyPromise = window.__installPromptReadyPromise
-  if (!readyPromise) return false
-
-  await Promise.race([
-    readyPromise,
-    new Promise((resolve) => window.setTimeout(resolve, timeoutMs)),
-  ])
-
-  // @ts-ignore
-  return Boolean(window.__deferredPrompt)
-}
-
 window.requestMaestroInstallPrompt = async () => {
-  const ready = await waitForInstallPrompt()
-  if (!ready) return false
-
   // @ts-ignore
   const prompt = window.__deferredPrompt
   if (!prompt) return false
   try {
-    await prompt.prompt()
+    prompt.prompt()
     const choice = await prompt.userChoice
     localStorage.setItem('maestro_install_shown', '1')
     // @ts-ignore
