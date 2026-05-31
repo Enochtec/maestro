@@ -1379,23 +1379,6 @@ function App() {
                 <span>Settings</span>
               </button>
 
-              <button
-                type="button"
-                className="flex items-center gap-2 px-0 py-3 sidebar-text font-semibold transition-colors"
-                title="Install app"
-                onClick={async () => {
-                  const installed = await window.requestMaestroInstallPrompt?.()
-                  if (!installed) {
-                      window.alert(
-                        'If your browser does not show Install, on iPhone tap Share, then Add to Home Screen. On Android, open the browser menu and choose Install app or Add to Home screen.',
-                      )
-                  }
-                }}
-              >
-                <span className="material-symbols-rounded sidebar-icon sidebar-icon-wrap flex-shrink-0">download</span>
-                <span>Install app</span>
-              </button>
-
               <div className="flex items-center gap-2 px-0 py-3">
                 {user?.avatarUrl ? (
                   <img
