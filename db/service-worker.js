@@ -1,4 +1,4 @@
-const CACHE_NAME = 'maestro-shell-v1'
+const CACHE_NAME = 'maestro-shell-v2'
 const CORE_ASSETS = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg']
 
 self.addEventListener('install', (event) => {

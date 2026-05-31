@@ -1,4 +1,4 @@
-const CACHE_NAME = 'maestro-pwa-v1'
+const CACHE_NAME = 'maestro-pwa-v2'
 const CORE_ASSETS = ['/', '/index.html', '/logo.svg', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', (event) => {
