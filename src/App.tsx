@@ -1386,7 +1386,9 @@ function App() {
                 onClick={async () => {
                   const installed = await window.requestMaestroInstallPrompt?.()
                   if (!installed) {
-                    window.alert('Install is not available in this browser right now.')
+                      window.alert(
+                        'If your browser does not show Install, on iPhone tap Share, then Add to Home Screen. On Android, open the browser menu and choose Install app or Add to Home screen.',
+                      )
                   }
                 }}
               >

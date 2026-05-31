@@ -101,6 +101,9 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+const installHelpText =
+  'If your browser does not show Install, on iPhone tap Share, then Add to Home Screen. On Android, open the browser menu and choose Install app or Add to Home screen.'
+
 let resolveInstallPromptReady: (() => void) | null = null
 window.__installPromptReadyPromise = new Promise<void>((resolve) => {
   resolveInstallPromptReady = resolve
@@ -144,7 +147,7 @@ window.addEventListener('beforeinstallprompt', (e: any) => {
             el.remove()
             localStorage.setItem('maestro_install_shown', '1')
           } else {
-            window.alert('Install is not available in this browser right now.')
+            window.alert(installHelpText)
           }
         })
       }
@@ -197,7 +200,7 @@ async function renderInstallDebug() {
     if (btn) {
       btn.addEventListener('click', async () => {
         const res = await window.requestMaestroInstallPrompt?.()
-        if (!res) window.alert('Install was not accepted or not available')
+        if (!res) window.alert(installHelpText)
       })
     }
   } catch (err) {
