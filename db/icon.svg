@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Maestro">
+  <rect width="512" height="512" rx="120" fill="#08090d"/>
+  <circle cx="256" cy="256" r="180" fill="#2fbf71"/>
+  <path d="M166 346V166h54l36 82 36-82h54v180h-40V226l-28 60h-44l-28-60v120z" fill="#08090d"/>
+</svg>
